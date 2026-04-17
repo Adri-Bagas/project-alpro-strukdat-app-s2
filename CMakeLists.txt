@@ -31,7 +31,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(libvlcpp)
 
 # --- 3. BUILD THE APP ---
-add_executable(my_application src/main.cpp)
+add_executable(my_application
+  src/main.cpp
+  src/utils/media_scan.cpp
+)
 slint_target_sources(my_application ui/app-window.slint)
 
 # --- 4. FIX CLANGD AUTOCOMPLETE (Added) ---
