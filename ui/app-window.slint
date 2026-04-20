@@ -1,17 +1,137 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button, ComboBox, CheckBox, HorizontalBox, VerticalBox, LineEdit, ScrollView, Switch } from "std-widgets.slint";
+
+export struct MediaItem {
+    name: string,
+    details: string,
+    is_playing: bool,
+    has_icon: bool
+}
 
 export component AppWindow inherits Window {
-    in-out property<int> counter: 42;
-    callback request-increase-value();
-    VerticalBox {
-        Text {
-            text: "Counter: \{root.counter}";
-        }
-        Button {
-            text: "Increase value";
-            clicked => {
-                root.request-increase-value();
+    min-width: 1200px;
+    min-height: 600px;
+    title: "Media Player";
+
+    in-out property <[MediaItem]> media-files;
+    in-out property <[MediaItem]> queue-files;
+    in-out property <bool> sidebar-visible: false;
+    in-out property <bool> is-compact-view: false;
+
+    callback browse-folder();
+    callback play-media(int);
+    callback toggle-shuffle();
+    callback toggle-cycle();
+    callback sort-changed(string);
+    callback filter-changed(string);
+
+    HorizontalBox {
+        padding: 5px;
+        
+        // Main Content Area
+        VerticalBox {
+            // Top Bar
+            HorizontalBox {
+                alignment: start;
+                height: 40px;
+                
+                LineEdit {
+                    placeholder-text: "Select folder...";
+                    width: 200px;
+                }
+                Button { 
+                    text: "Browse"; 
+                    clicked => { root.browse-folder() } 
+                }
+                
+                Text { text: "Filter:"; vertical-alignment: center; }
+                ComboBox {
+                    model: ["All", "Audio", "Video"];
+                    selected(value) => { root.filter-changed(value); }
+                }
+                
+                Text { text: "Sort:"; vertical-alignment: center; }
+                ComboBox {
+                    model: ["Name", "Size", "Date Modified", "Length"];
+                    selected(value) => { root.sort-changed(value); }
+                }
+
+                Switch {
+                    text: "Compact";
+                    checked: root.is-compact-view;
+                    toggled() => { root.is-compact-view = self.checked; }
+                }
+
+                Button { 
+                    text: root.sidebar-visible ? "Hide Queue" : "Show Queue";
+                    clicked => { root.sidebar-visible = !root.sidebar-visible; }
+                }
+            }
+
+            // Media List
+            ScrollView {
+                VerticalBox {
+                    alignment: start;
+                    for item[index] in root.media-files : Rectangle {
+                        height: root.is-compact-view ? 30px : 60px;
+                        background: item.is_playing ? #005A9E : transparent;
+                        
+                        HorizontalBox {
+                            padding: 5px;
+                            if !root.is-compact-view : Rectangle {
+                                width: 40px;
+                                height: 40px;
+                                background: gray; // Placeholder for thumbnail/icon
+                            }
+                            VerticalBox {
+                                alignment: center;
+                                Text { 
+                                    text: item.name; 
+                                    font-weight: 700; 
+                                    color: item.is_playing ? white : black;
+                                }
+                                if !root.is-compact-view : Text { 
+                                    text: item.details; 
+                                    font-size: 12px; 
+                                    color: item.is_playing ? lightgray : darkgray;
+                                }
+                            }
+                        }
+                        TouchArea {
+                            clicked => { root.play-media(index); }
+                        }
+                    }
+                }
             }
         }
-     }
+
+        // Sidebar (Queue)
+        if root.sidebar-visible : VerticalBox {
+            width: 250px;
+            
+            HorizontalBox {
+                alignment: space-between;
+                height: 40px;
+                Text { text: "Queue"; font-weight: 700; vertical-alignment: center; }
+                Button { text: "Shuffle"; clicked => { root.toggle-shuffle(); } }
+                Button { text: "Cycle"; clicked => { root.toggle-cycle(); } }
+            }
+            
+            ScrollView {
+                VerticalBox {
+                    alignment: start;
+                    for item[index] in root.queue-files : Rectangle {
+                        height: 40px;
+                        background: item.is_playing ? #107C10 : transparent;
+                        
+                        Text { 
+                            text: item.name; 
+                            color: item.is_playing ? white : black; 
+                            vertical-alignment: center; 
+                            x: 10px;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
