@@ -1,4 +1,5 @@
 #include "video_engine.hpp"
+#include "app-window.h"
 #include <cstring>
 
 namespace Playback {
@@ -24,7 +25,11 @@ namespace Playback {
             [&engine](void* picture, void* const* planes) {
                 if (engine.on_frame_ready) {
                     slint::SharedPixelBuffer<slint::Rgba8Pixel> slint_buffer(engine.video_width, engine.video_height);
+                    
+                    // Copy from VLC buffer to Slint buffer
+                    // VLC's RV32 is typically compatible with Slint's RGBA8 on standard systems
                     std::memcpy(slint_buffer.begin(), engine.pixel_buffer.data(), engine.pixel_buffer.size());
+                    
                     engine.on_frame_ready(slint_buffer);
                 }
                 engine.frame_mutex.unlock();
@@ -43,6 +48,9 @@ namespace Playback {
         });
 
         engine.m_em->onLengthChanged([&engine](int64_t new_length_ms) {
+
+            update_resolution(engine);
+
             if (engine.on_length_changed) {
                 engine.on_length_changed(new_length_ms / 1000.0f);
             }
@@ -54,6 +62,14 @@ namespace Playback {
     }
 
     void loadFile(VlcEngine& engine, const std::string& path) {
+        engine.current_media = VLC::Media(engine.instance, path, VLC::Media::FromPath);
+        engine.player.setMedia(engine.current_media);
+    }
+
+    void loadFile(VlcEngine& engine, const std::string& path, const MediaItem& item) {
+
+
+
         engine.current_media = VLC::Media(engine.instance, path, VLC::Media::FromPath);
         engine.player.setMedia(engine.current_media);
     }
@@ -77,4 +93,31 @@ namespace Playback {
     bool isPlaying(VlcEngine& engine) {
         return engine.player.isPlaying();
     }
+
+    void update_resolution(VlcEngine& engine) {
+    unsigned int width = 0;
+    unsigned int height = 0;
+
+    // libvlc_video_get_size mengembalikan 0 jika berhasil mendapatkan resolusi
+    if (libvlc_video_get_size(engine.player, 0, &width, &height) == 0) {
+        // Cek apakah ukurannya valid dan berbeda dari ukuran bawaan (1280x720)
+        if (width > 0 && height > 0 && (width != engine.video_width || height != engine.video_height)) {
+            
+            engine.frame_mutex.lock();
+            
+            engine.video_width = width;
+            engine.video_height = height;
+            
+            // Resize buffer Slint sesuai dengan dimensi video asli
+            engine.pixel_buffer.resize(engine.video_width * engine.video_height * 4);
+            
+            // Beri tahu VLC untuk menggunakan resolusi yang baru
+            engine.player.setVideoFormat("RGBA", engine.video_width, engine.video_height, engine.video_width * 4);
+            
+            printf("Resolusi video diperbarui secara dinamis: %u x %u\n", engine.video_width, engine.video_height);
+            
+            engine.frame_mutex.unlock();
+        }
+    }
+}
 }

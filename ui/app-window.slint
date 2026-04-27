@@ -11,7 +11,8 @@ export struct MediaItem {
     duration: string,   // Formatted "3:45"
     size_str: string,   // Formatted "5.2 MB"
     format: string,     // ".mp3", ".mp4"
-    track_num: string
+    track_num: string,
+    art_url: image,
 }
 
 export global Theme {
@@ -160,12 +161,15 @@ export component AppWindow inherits Window {
     in-out property <MediaItem> current-track;
     in-out property <float> track-progress: 0.35; // Example: 35% played
 
+    in-out property <bool> is-fullscreen: false;
+
     callback browse-folder();
     callback play-media(int);
     callback add-to-queue(int);
     callback toggle-shuffle();
     callback toggle-cycle();
     callback filter-changed(string);
+    callback sort-library(string);
 
     // New Player Callbacks
     callback clear-queue();
@@ -175,6 +179,7 @@ export component AppWindow inherits Window {
     callback player-next();
     callback player-prev();
     callback player-seek(float);
+    callback toggle-fullscreen();
 
     // Queue Context Menu Callbacks
     callback queue-move-up(int);
@@ -196,7 +201,7 @@ export component AppWindow inherits Window {
                 alignment: start;
                 height: 30px;
                 spacing: 15px;
-                
+
                 Text {
                     text: "📁 " + root.root-path;
                     vertical-alignment: center;
@@ -242,16 +247,88 @@ export component AppWindow inherits Window {
                     if root.is-compact-view: Rectangle {
                         height: 25px;
                         background: Theme.surface;
-                        HorizontalBox {
-                            padding: 0px;
+                        HorizontalLayout {
                             padding-left: 10px;
                             padding-right: 10px;
                             spacing: 10px;
-                            Text { text: "Name"; font-weight: 700; width: 40%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
-                            Text { text: "Artist"; font-weight: 700; width: 30%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
-                            Text { text: "Dur"; font-weight: 700; width: 15%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
-                            Text { text: "Size"; font-weight: 700; width: 15%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
+
+                            Rectangle {
+                                width: 40%;
+                                background: ta-name.has-hover ? Theme.highlight.transparentize(80%) : transparent;
+                                Text {
+                                    text: "Name";
+                                    font-weight: 700;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    color: Theme.text;
+                                    x: 0;
+                                }
+
+                                ta-name := TouchArea {
+                                    clicked => {
+                                        root.sort-library("name");
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: 30%;
+                                background: ta-artist.has-hover ? Theme.highlight.transparentize(80%) : transparent;
+                                Text {
+                                    text: "Artist";
+                                    font-weight: 700;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    color: Theme.text;
+                                    x: 0;
+                                }
+
+                                ta-artist := TouchArea {
+                                    clicked => {
+                                        root.sort-library("artist");
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: 15%;
+                                background: ta-dur.has-hover ? Theme.highlight.transparentize(80%) : transparent;
+                                Text {
+                                    text: "Dur";
+                                    font-weight: 700;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    color: Theme.text;
+                                    x: 0;
+                                }
+
+                                ta-dur := TouchArea {
+                                    clicked => {
+                                        root.sort-library("duration");
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                width: 15%;
+                                background: ta-size.has-hover ? Theme.highlight.transparentize(80%) : transparent;
+                                Text {
+                                    text: "Size";
+                                    font-weight: 700;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    color: Theme.text;
+                                    x: 0;
+                                }
+
+                                ta-size := TouchArea {
+                                    clicked => {
+                                        root.sort-library("size");
+                                    }
+                                }
+                            }
                         }
+
                         Rectangle {
                             y: parent.height - 1px;
                             height: 1px;
@@ -266,7 +343,7 @@ export component AppWindow inherits Window {
                             padding: 5px;
                             for item[index] in root.media-files: VerticalLayout {
                                 spacing: 0px;
-                                
+
                                 // --- COMPACT VIEW (Table Row) ---
                                 if root.is-compact-view: Rectangle {
                                     height: 30px;
@@ -278,7 +355,7 @@ export component AppWindow inherits Window {
                                         padding-left: 5px;
                                         padding-right: 5px;
                                         spacing: 10px;
-                                        
+
                                         Text {
                                             text: (item.format == ".mp4" || item.format == ".mkv" ? "🎬 " : "🎵 ") + item.name;
                                             color: item.is_playing ? Theme.highlight : Theme.text;
@@ -327,14 +404,17 @@ export component AppWindow inherits Window {
                                     }
 
                                     lib-menu-compact := PopupWindow {
-                                        x: ta-compact.mouse-x; y: ta-compact.mouse-y;
+                                        x: ta-compact.mouse-x;
+                                        y: ta-compact.mouse-y;
                                         width: 120px;
                                         RetroFrame {
                                             VerticalBox {
                                                 padding: 2px;
-                                                RetroButton { 
-                                                    text: "Add to Queue"; 
-                                                    clicked => { root.add-to-queue(index); } 
+                                                RetroButton {
+                                                    text: "Add to Queue";
+                                                    clicked => {
+                                                        root.add-to-queue(index);
+                                                    }
                                                 }
                                             }
                                         }
@@ -345,17 +425,25 @@ export component AppWindow inherits Window {
                                 if !root.is-compact-view: RetroFrame {
                                     height: 80px;
                                     background: item.is_playing ? Theme.active-blue : (ta-card.has-hover ? Theme.highlight.transparentize(80%) : transparent);
-                                    
+
                                     HorizontalLayout {
                                         padding: 5px;
                                         spacing: 15px;
-                                        
+
                                         // Artwork placeholder
                                         RetroFrame {
                                             width: 70px;
                                             height: 70px;
                                             background: black;
-                                            Text {
+
+                                            if item.has_icon: Image {
+                                                source: item.art_url;
+                                                width: 100%;
+                                                height: 100%;
+                                                image-fit: contain;
+                                            }
+
+                                            if !item.has_icon: Text {
                                                 text: (item.format == ".mp4" || item.format == ".mkv" ? "🎬" : "🎵");
                                                 color: #00ff00;
                                                 horizontal-alignment: center;
@@ -363,21 +451,43 @@ export component AppWindow inherits Window {
                                                 font-size: 24px;
                                             }
                                         }
-                                        
+
                                         // Details
                                         VerticalLayout {
                                             alignment: center;
                                             spacing: 5px;
-                                            Text { text: item.name; font-size: 14px; font-weight: 700; color: item.is_playing ? Theme.highlight : Theme.text; overflow: elide; }
-                                            Text { text: "Artist: " + item.artist; font-size: 12px; color: item.is_playing ? Theme.highlight : Theme.text; overflow: elide; }
+                                            Text {
+                                                text: item.name;
+                                                font-size: 14px;
+                                                font-weight: 700;
+                                                color: item.is_playing ? Theme.highlight : Theme.text;
+                                                overflow: elide;
+                                            }
+
+                                            Text {
+                                                text: "Artist: " + item.artist;
+                                                font-size: 12px;
+                                                color: item.is_playing ? Theme.highlight : Theme.text;
+                                                overflow: elide;
+                                            }
+
                                             HorizontalLayout {
                                                 spacing: 15px;
-                                                Text { text: "Format: " + item.format; font-size: 11px; color: item.is_playing ? Theme.highlight : Theme.text; }
-                                                Text { text: "Duration: " + item.duration; font-size: 11px; color: item.is_playing ? Theme.highlight : Theme.text; }
+                                                Text {
+                                                    text: "Format: " + item.format;
+                                                    font-size: 11px;
+                                                    color: item.is_playing ? Theme.highlight : Theme.text;
+                                                }
+
+                                                Text {
+                                                    text: "Duration: " + item.duration;
+                                                    font-size: 11px;
+                                                    color: item.is_playing ? Theme.highlight : Theme.text;
+                                                }
                                             }
                                         }
                                     }
-                                    
+
                                     ta-card := TouchArea {
                                         clicked => {
                                             root.current-track = item;
@@ -391,14 +501,17 @@ export component AppWindow inherits Window {
                                     }
 
                                     lib-menu-card := PopupWindow {
-                                        x: ta-card.mouse-x; y: ta-card.mouse-y;
+                                        x: ta-card.mouse-x;
+                                        y: ta-card.mouse-y;
                                         width: 120px;
                                         RetroFrame {
                                             VerticalBox {
                                                 padding: 2px;
-                                                RetroButton { 
-                                                    text: "Add to Queue"; 
-                                                    clicked => { root.add-to-queue(index); } 
+                                                RetroButton {
+                                                    text: "Add to Queue";
+                                                    clicked => {
+                                                        root.add-to-queue(index);
+                                                    }
                                                 }
                                             }
                                         }
@@ -416,7 +529,7 @@ export component AppWindow inherits Window {
                 VerticalBox {
                     padding: 8px;
                     spacing: 8px;
-                    
+
                     Text {
                         text: "Now Playing: " + root.current-track.name + " (" + root.current-track.artist + ")";
                         font-size: 11px;
@@ -425,17 +538,38 @@ export component AppWindow inherits Window {
 
                     RetroProgressBar {
                         progress: root.track-progress;
-                        seek(p) => { root.player-seek(p); }
+                        seek(p) => {
+                            root.player-seek(p);
+                        }
                     }
 
                     HorizontalBox {
                         alignment: center;
                         spacing: 8px;
-                        RetroButton { text: "▶"; clicked => { root.player-play(); } }
-                        RetroButton { text: "⏸"; clicked => { root.player-pause(); } }
-                        RetroButton { text: "⏹"; clicked => { root.player-stop(); } }
-                        
-                        Rectangle { width: 10px; } // Spacer
+                        RetroButton {
+                            text: "▶";
+                            clicked => {
+                                root.player-play();
+                            }
+                        }
+
+                        RetroButton {
+                            text: "⏸";
+                            clicked => {
+                                root.player-pause();
+                            }
+                        }
+
+                        RetroButton {
+                            text: "⏹";
+                            clicked => {
+                                root.player-stop();
+                            }
+                        }
+
+                        Rectangle {
+                            width: 10px;
+                        } // Spacer
 
                         RetroButton {
                             text: "Full View >";
@@ -469,6 +603,7 @@ export component AppWindow inherits Window {
                             root.clear-queue();
                         }
                     }
+
                     RetroButton {
                         text: "Shuffle";
                         clicked => {
@@ -491,16 +626,16 @@ export component AppWindow inherits Window {
                         alignment: start;
                         spacing: 0px;
                         padding: 2px;
-                        for item[index] in root.queue-files : Rectangle {
+                        for item[index] in root.queue-files: Rectangle {
                             height: 25px;
                             background: item.is_playing ? Theme.active-blue : (ta.has-hover ? Theme.highlight.transparentize(80%) : transparent);
-                            
+
                             HorizontalBox {
                                 padding: 0px;
                                 padding-left: 5px;
                                 spacing: 5px;
-                                Text { 
-                                    text: (index + 1) + ". " + item.name + " [" + item.duration + "]"; 
+                                Text {
+                                    text: (index + 1) + ". " + item.name + " [" + item.duration + "]";
                                     color: item.is_playing ? Theme.highlight : Theme.text;
                                     font-size: 11px;
                                     vertical-alignment: center;
@@ -516,16 +651,40 @@ export component AppWindow inherits Window {
                             }
 
                             menu := PopupWindow {
-                                x: ta.mouse-x; y: ta.mouse-y;
+                                x: ta.mouse-x;
+                                y: ta.mouse-y;
                                 width: 120px;
                                 RetroFrame {
                                     VerticalBox {
                                         padding: 2px;
                                         spacing: 2px;
-                                        RetroButton { text: "Move Up"; clicked => { root.queue-move-up(index); } }
-                                        RetroButton { text: "Move Down"; clicked => { root.queue-move-down(index); } }
-                                        RetroButton { text: "Delete"; clicked => { root.queue-delete(index); } }
-                                        RetroButton { text: "Jump To It"; clicked => { root.queue-jump(index); } }
+                                        RetroButton {
+                                            text: "Move Up";
+                                            clicked => {
+                                                root.queue-move-up(index);
+                                            }
+                                        }
+
+                                        RetroButton {
+                                            text: "Move Down";
+                                            clicked => {
+                                                root.queue-move-down(index);
+                                            }
+                                        }
+
+                                        RetroButton {
+                                            text: "Delete";
+                                            clicked => {
+                                                root.queue-delete(index);
+                                            }
+                                        }
+
+                                        RetroButton {
+                                            text: "Jump To It";
+                                            clicked => {
+                                                root.queue-jump(index);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -570,8 +729,16 @@ export component AppWindow inherits Window {
                     height: parent.height - 10px;
                     x: 5px;
                     y: 5px;
-                    Text {
-                        text: "Visualizer / Album Art\n" + root.current-track.name;
+
+                    if current-track.has_icon: Image {
+                        source: current-track.art_url;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: contain;
+                    }
+
+                    if !current-track.has_icon: Text {
+                        text: "No Art\n" + root.current-track.name;
                         color: #00ff00; // Classic terminal green
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -627,7 +794,9 @@ export component AppWindow inherits Window {
 
                 RetroProgressBar {
                     progress: root.track-progress;
-                    seek(p) => { root.player-seek(p); }
+                    seek(p) => {
+                        root.player-seek(p);
+                    }
                 }
 
                 HorizontalBox {
@@ -680,79 +849,130 @@ export component AppWindow inherits Window {
     // ==========================================
     // VIEW 2: VIDEO PLAYER
     // ==========================================
-    if root.current-view == 2 : VerticalBox {
+    if root.current-view == 2: VerticalBox {
         padding: 10px;
         spacing: 10px;
 
         // Top Navigation
-        HorizontalBox {
+        if !root.is-fullscreen : HorizontalBox {
             height: 30px;
             alignment: start;
             spacing: 10px;
-            RetroButton { 
-                text: "< Back to Library"; 
-                clicked => { root.current-view = 0; } 
+            RetroButton {
+                text: "< Back to Library";
+                clicked => {
+                    root.current-view = 0;
+                }
             }
-            Text { 
-                text: "Playing: " + root.current-track.name; 
-                vertical-alignment: center; 
-                font-weight: 700; 
-                color: Theme.text; 
+
+            Text {
+                text: "Playing: " + root.current-track.name;
+                vertical-alignment: center;
+                font-weight: 700;
+                color: Theme.text;
             }
         }
 
         // Main Video Surface
         RetroFrame {
             background: black;
-            
+
             // Target for VLC pixel buffer
             Image {
                 width: parent.width - 4px;
                 height: parent.height - 4px;
-                x: 2px; y: 2px;
-                source: root.video-frame; 
+                x: 0px;
+                y: 0px;
+                source: root.video-frame;
                 image-fit: contain;
             }
-            
-            if !root.current-track.is_playing : Text {
-                text: "Video Offline";
-                color: Theme.text;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+
+            TouchArea {
+                clicked => {
+                    if root.current-track.is_playing {
+                        root.player-pause();
+                    } else {
+                        root.player-play();
+                    }
+                }
             }
         }
 
         // Media Control Panel
-        RetroFrame {
+        if !root.is-fullscreen : RetroFrame {
             height: 80px;
             VerticalBox {
                 padding: 10px;
                 spacing: 10px;
 
-                RetroProgressBar { 
-                    progress: root.track-progress; 
-                    seek(p) => { root.player-seek(p); }
+                RetroProgressBar {
+                    progress: root.track-progress;
+                    seek(p) => {
+                        root.player-seek(p);
+                    }
                 }
 
                 HorizontalBox {
                     alignment: center;
                     spacing: 10px;
+
+                    RetroButton {
+                        text: "▶";
+                        width: 60px;
+                        clicked => {
+                            root.player-play();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "⏸";
+                        width: 60px;
+                        clicked => {
+                            root.player-pause();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "⏹";
+                        width: 60px;
+                        clicked => {
+                            root.player-stop();
+                        }
+                    }
+
+                    Rectangle {
+                        width: 20px;
+                    } // Spacer
                     
-                    RetroButton { text: "▶"; width: 60px; clicked => { root.player-play(); } }
-                    RetroButton { text: "⏸"; width: 60px; clicked => { root.player-pause(); } }
-                    RetroButton { text: "⏹"; width: 60px; clicked => { root.player-stop(); } }
+                    Text {
+                        text: "Vol:";
+                        vertical-alignment: center;
+                        color: Theme.text;
+                    }
+
+                    RetroButton {
+                        text: "-";
+                        width: 30px;
+                    }
+
+                    RetroButton {
+                        text: "+";
+                        width: 30px;
+                    }
+
+                    Rectangle {
+                        width: 20px;
+                    } // Spacer
                     
-                    Rectangle { width: 20px; } // Spacer
-                    
-                    Text { text: "Vol:"; vertical-alignment: center; color: Theme.text; }
-                    RetroButton { text: "-"; width: 30px; } 
-                    RetroButton { text: "+"; width: 30px; } 
-                    
-                    Rectangle { width: 20px; } // Spacer
-                    
-                    RetroButton { text: "Fullscreen"; width: 80px; } 
+                    RetroButton {
+                        text: "Fullscreen";
+                        width: 80px;
+                        clicked => { root.toggle-fullscreen(); }
+                    }
                 }
             }
         }
+
+        
     }
 }

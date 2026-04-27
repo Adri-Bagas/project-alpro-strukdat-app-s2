@@ -24,6 +24,9 @@ struct VlcEngine {
     std::function<void(float)> on_time_changed;
     std::function<void(float)> on_length_changed;
     std::function<void(slint::SharedPixelBuffer<slint::Rgba8Pixel>)> on_frame_ready;
+
+    
+    
 };
 
 // --- LOGIC NAMESPACE ---
@@ -37,4 +40,5 @@ namespace Playback {
     void setTime(VlcEngine& engine, float seconds);
     float getLength(VlcEngine& engine);
     bool isPlaying(VlcEngine& engine);
+    void update_resolution(VlcEngine& engine);
 }

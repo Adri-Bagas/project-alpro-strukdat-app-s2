@@ -2,15 +2,21 @@
 #include "utils/media_scan.hpp"
 #include "utils/metadata_extract.hpp"
 #include "engine/video_engine.hpp"
+#include "utils/sort.hpp"
 #include <vlcpp/vlc.hpp>
 #include <memory>
+#include <vector>
 
 int main(int argc, char **argv)
 {
     auto ui = AppWindow::create();
 
     // 1. Initialize Engines
-    VLC::Instance vlcInstance(0, nullptr);
+    const char* const vlc_args[] = {
+        "--no-xlib", 
+        "--quiet"
+    };
+    VLC::Instance vlcInstance(sizeof(vlc_args) / sizeof(vlc_args[0]), vlc_args);
     auto vlcEngine = std::make_shared<VlcEngine>();
     Playback::init(*vlcEngine);
 
@@ -18,6 +24,12 @@ int main(int argc, char **argv)
     auto mediaModel = std::make_shared<slint::VectorModel<MediaItem>>();
     auto queueModel = std::make_shared<slint::VectorModel<MediaItem>>();
     
+    // Sort State
+    struct SortState {
+        std::string column = "";
+        bool ascending = true;
+    } sortState;
+
     MediaQueue playbackQueue;
     MediaQueueOps::init(playbackQueue);
     
@@ -176,6 +188,40 @@ int main(int argc, char **argv)
         while (queueModel->row_count() > 0) queueModel->erase(0);
     });
 
+    ui->on_sort_library([&, mediaModel](slint::SharedString col) mutable {
+        std::string criteria = std::string(col.data());
+        
+        if (sortState.column == criteria) {
+            sortState.ascending = !sortState.ascending;
+        } else {
+            sortState.column = criteria;
+            sortState.ascending = true;
+        }
+
+        std::vector<MediaItem> items;
+        for (int i = 0; i < mediaModel->row_count(); ++i) {
+            items.push_back(mediaModel->row_data(i).value());
+        }
+
+        auto comp = [&](const MediaItem& a, const MediaItem& b) {
+            bool result = false;
+            if (criteria == "name") result = std::string(a.name.data()) < std::string(b.name.data());
+            else if (criteria == "artist") result = std::string(a.artist.data()) < std::string(b.artist.data());
+            else if (criteria == "duration") result = std::string(a.duration.data()) < std::string(b.duration.data());
+            else if (criteria == "size") result = std::string(a.size_str.data()) < std::string(b.size_str.data());
+            return sortState.ascending ? result : !result;
+        };
+
+        if (items.size() > 1) {
+            SortUtils::timsort(items.data(), items.size(), comp);
+        }
+
+        while(mediaModel->row_count() > 0) mediaModel->erase(0);
+        for (const auto& item : items) {
+            mediaModel->push_back(item);
+        }
+    });
+
     ui->on_queue_move_up([&](int index) {
         if (index > 0 && index < queueModel->row_count()) {
             MediaQueueOps::swapNodes(playbackQueue, index, index - 1);
@@ -217,11 +263,33 @@ int main(int argc, char **argv)
         }
     });
 
-    ui->on_player_play([vlcEngine]() { Playback::play(*vlcEngine); });
-    ui->on_player_pause([vlcEngine]() { Playback::pause(*vlcEngine); });
-    ui->on_player_stop([vlcEngine]() { 
+    ui->on_player_play([&]() { 
+        Playback::play(*vlcEngine);
+        auto current = ui->get_current_track();
+        current.is_playing = true;
+        ui->set_current_track(current);
+    });
+
+    ui->on_player_pause([&]() { 
+        Playback::pause(*vlcEngine);
+        auto current = ui->get_current_track();
+        current.is_playing = false;
+        ui->set_current_track(current);
+    });
+
+    ui->on_player_stop([&]() { 
         Playback::pause(*vlcEngine);
         Playback::setTime(*vlcEngine, 0);
+        auto current = ui->get_current_track();
+        current.is_playing = false;
+        ui->set_current_track(current);
+    });
+
+    static bool isFullscreen = false;
+    ui->on_toggle_fullscreen([&, ui]() {
+        isFullscreen = !isFullscreen;
+        ui->window().set_fullscreen(isFullscreen);
+        ui->set_is_fullscreen(isFullscreen);
     });
 
     ui->run();

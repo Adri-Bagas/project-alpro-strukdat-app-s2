@@ -27,6 +27,28 @@ std::string format_size(uintmax_t bytes) {
     return oss.str();
 }
 
+// Helper: Simple URL Decode (to handle %20 etc.)
+std::string urlDecode(std::string str) {
+    std::string ret;
+    char ch;
+    int i, ii;
+    for (i=0; i<str.length(); i++) {
+        if (str[i] == '%') {
+            if (i + 2 < str.length()) {
+                sscanf(str.substr(i + 1, 2).c_str(), "%x", &ii);
+                ch = static_cast<char>(ii);
+                ret += ch;
+                i = i + 2;
+            }
+        } else if (str[i] == '+') {
+            ret += ' ';
+        } else {
+            ret += str[i];
+        }
+    }
+    return ret;
+}
+
 // Main parser function
 void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std::shared_ptr<slint::VectorModel<MediaItem>> ui_model) {
     fs::path p(filepath);
@@ -61,7 +83,26 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
 
             // 3. UI Thread Dispatch
             slint::invoke_from_event_loop([title, artist, album, filepath, dur_str, size_str, format, track_num, art, ui_model]() {
-                printf("Pushing item to UI: %s\n", title.c_str());
+                std::string cleaned_art = art;
+                if (!art.empty()) {
+                    // VLC typically returns file:///path on Linux
+                    // We remove the file:// prefix but keep the leading / for absolute paths
+                    if (art.compare(0, 7, "file://") == 0) {
+                        cleaned_art = art.substr(7);
+                    }
+                    cleaned_art = urlDecode(cleaned_art);
+                }
+
+                bool actually_has_art = false;
+                slint::Image art_img;
+                if (!cleaned_art.empty() && fs::exists(cleaned_art)) {
+                    printf("[ART] Loading artwork for '%s' from: %s\n", title.c_str(), cleaned_art.c_str());
+                    art_img = slint::Image::load_from_path(cleaned_art.c_str());
+                    actually_has_art = true;
+                } else if (!art.empty()) {
+                    printf("[ART] Invalid or missing artwork path for '%s': %s\n", title.c_str(), cleaned_art.c_str());
+                }
+
                 MediaItem item;
                 item.name = title.c_str();
                 item.details = album.c_str();
@@ -72,13 +113,13 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
                 item.size_str = size_str.c_str();
                 item.format = format.c_str();
                 item.track_num = track_num.c_str();
-                item.has_icon = !art.empty();
+                item.art_url = art_img;
+                item.has_icon = actually_has_art;
                 item.is_playing = false;
+                
 
                 ui_model->push_back(item);
             });
-        } else {
-            printf("Media parsing status for %s: %d\n", filename.c_str(), (int)status);
         }
     });
 
