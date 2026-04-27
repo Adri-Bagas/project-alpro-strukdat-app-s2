@@ -63,6 +63,125 @@ void MediaLinkedList::printAll() const {
 	}
 }
 
+// MediaQueue Implementation
+MediaQueue::MediaQueue() : front(nullptr), rear(nullptr), count(0) {}
+
+MediaQueue::~MediaQueue() {
+	while (!isEmpty()) {
+		dequeue();
+	}
+}
+
+void MediaQueue::enqueue(const std::string& path) {
+	MediaNode* newNode = new MediaNode(path);
+	if (isEmpty()) {
+		front = rear = newNode;
+	} else {
+		rear->next = newNode;
+		rear = newNode;
+	}
+	count++;
+}
+
+std::string MediaQueue::dequeue() {
+	if (isEmpty()) return "";
+	MediaNode* temp = front;
+	std::string path = temp->path;
+	front = front->next;
+	if (!front) rear = nullptr;
+	delete temp;
+	count--;
+	return path;
+}
+
+std::string MediaQueue::peek() const {
+	return isEmpty() ? "" : front->path;
+}
+
+void MediaQueue::swapNodes(size_t index1, size_t index2) {
+	if (index1 >= count || index2 >= count || index1 == index2) return;
+	
+	MediaNode* node1 = front;
+	for (size_t i = 0; i < index1; ++i) node1 = node1->next;
+	
+	MediaNode* node2 = front;
+	for (size_t i = 0; i < index2; ++i) node2 = node2->next;
+	
+	std::string temp = node1->path;
+	node1->path = node2->path;
+	node2->path = temp;
+}
+
+std::string MediaQueue::removeAt(size_t index) {
+	if (index >= count || isEmpty()) return "";
+	
+	MediaNode* toDelete = nullptr;
+	std::string path;
+	
+	if (index == 0) {
+		toDelete = front;
+		front = front->next;
+		if (!front) rear = nullptr;
+	} else {
+		MediaNode* prev = front;
+		for (size_t i = 0; i < index - 1; ++i) prev = prev->next;
+		toDelete = prev->next;
+		prev->next = toDelete->next;
+		if (toDelete == rear) rear = prev;
+	}
+	
+	path = toDelete->path;
+	delete toDelete;
+	count--;
+	return path;
+}
+
+bool MediaQueue::isEmpty() const {
+	return front == nullptr;
+}
+
+size_t MediaQueue::getSize() const {
+	return count;
+}
+
+// MediaStack Implementation
+MediaStack::MediaStack() : top(nullptr), count(0) {}
+
+MediaStack::~MediaStack() {
+	while (!isEmpty()) {
+		pop();
+	}
+}
+
+void MediaStack::push(const std::string& path) {
+	MediaNode* newNode = new MediaNode(path);
+	newNode->next = top;
+	top = newNode;
+	count++;
+}
+
+std::string MediaStack::pop() {
+	if (isEmpty()) return "";
+	MediaNode* temp = top;
+	std::string path = temp->path;
+	top = top->next;
+	delete temp;
+	count--;
+	return path;
+}
+
+std::string MediaStack::peek() const {
+	return isEmpty() ? "" : top->path;
+}
+
+bool MediaStack::isEmpty() const {
+	return top == nullptr;
+}
+
+size_t MediaStack::getSize() const {
+	return count;
+}
+
 bool MediaScanner::isMediaFile(const fs::path& filePath) {
 	if (!filePath.has_extension()) {
 		return false;
@@ -83,9 +202,9 @@ fs::path MediaScanner::getDefaultMediaRoot() {
 	return fs::path("C:/Users/Default/Music");
 #else
 	if (const char* home = std::getenv("HOME")) {
-		return fs::path(home) / "Musics";
+		return fs::path(home) / "Music";
 	}
-	return fs::path("/home") / "Musics";
+	return fs::path("/home") / "Music";
 #endif
 }
 

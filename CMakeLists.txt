@@ -34,6 +34,8 @@ FetchContent_MakeAvailable(libvlcpp)
 add_executable(my_application
   src/main.cpp
   src/utils/media_scan.cpp
+  src/engine/video_engine.cpp
+  src/utils/metadata_extract.cpp
 )
 slint_target_sources(my_application ui/app-window.slint)
 

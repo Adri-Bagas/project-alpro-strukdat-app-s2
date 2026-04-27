@@ -1,135 +1,756 @@
-import { Button, ComboBox, CheckBox, HorizontalBox, VerticalBox, LineEdit, ScrollView, Switch } from "std-widgets.slint";
+import { ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export struct MediaItem {
-    name: string,
-    details: string,
+    name: string,       // Title or filename
+    details: string,    // General info (e.g., Album name)
+    artist: string,     // Band/Creator
+    album: string,
     is_playing: bool,
-    has_icon: bool
+    has_icon: bool,
+    path: string,       // Full file path
+    duration: string,   // Formatted "3:45"
+    size_str: string,   // Formatted "5.2 MB"
+    format: string,     // ".mp3", ".mp4"
+    track_num: string
+}
+
+export global Theme {
+    in property <color> surface: #c0c0c0;
+    in property <color> highlight: #ffffff;
+    in property <color> shadow: #808080;
+    in property <color> text: #000000;
+    in property <color> active-blue: #000080;
+}
+
+component RetroButton inherits TouchArea {
+    in property <string> text;
+    width: max(75px, txt.min-width + 20px);
+    height: 25px;
+
+    Rectangle {
+        background: Theme.surface;
+
+        Rectangle {
+            y: 0;
+            x: 0;
+            height: 1px;
+            width: parent.width;
+            background: root.pressed ? Theme.shadow : Theme.highlight;
+        }
+
+        Rectangle {
+            y: 0;
+            x: 0;
+            height: parent.height;
+            width: 1px;
+            background: root.pressed ? Theme.shadow : Theme.highlight;
+        }
+
+        Rectangle {
+            y: parent.height - 1px;
+            x: 0;
+            height: 1px;
+            width: parent.width;
+            background: root.pressed ? Theme.highlight : black;
+        }
+
+        Rectangle {
+            y: 0;
+            x: parent.width - 1px;
+            height: parent.height;
+            width: 1px;
+            background: root.pressed ? Theme.highlight : black;
+        }
+
+        if !root.pressed: Rectangle {
+            y: parent.height - 2px;
+            x: 1px;
+            height: 1px;
+            width: parent.width - 2px;
+            background: Theme.shadow;
+        }
+        if !root.pressed: Rectangle {
+            y: 1px;
+            x: parent.width - 2px;
+            height: parent.height - 2px;
+            width: 1px;
+            background: Theme.shadow;
+        }
+
+        txt := Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: 12px;
+            x: (parent.width - self.width) / 2 + (root.pressed ? 1px : 0px);
+            y: (parent.height - self.height) / 2 + (root.pressed ? 1px : 0px);
+        }
+    }
+}
+
+component RetroFrame inherits Rectangle {
+    background: Theme.surface;
+    Rectangle {
+        y: 0;
+        x: 0;
+        height: 1px;
+        width: parent.width;
+        background: Theme.shadow;
+    }
+
+    Rectangle {
+        y: 0;
+        x: 0;
+        height: parent.height;
+        width: 1px;
+        background: Theme.shadow;
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        x: 0;
+        height: 1px;
+        width: parent.width;
+        background: Theme.highlight;
+    }
+
+    Rectangle {
+        y: 0;
+        x: parent.width - 1px;
+        height: parent.height;
+        width: 1px;
+        background: Theme.highlight;
+    }
+}
+
+// New Win95 Progress Bar
+component RetroProgressBar inherits RetroFrame {
+    in property <float> progress: 0.0; // 0.0 to 1.0
+    callback seek(float);
+    height: 20px;
+
+    Rectangle {
+        x: 2px;
+        y: 2px;
+        height: parent.height - 4px;
+        width: max(0px, (parent.width - 4px) * root.progress);
+        background: Theme.active-blue;
+    }
+
+    TouchArea {
+        clicked => {
+            root.seek(self.pressed-x / self.width);
+        }
+    }
 }
 
 export component AppWindow inherits Window {
-    min-width: 1200px;
-    min-height: 600px;
+
     title: "Media Player";
+    background: Theme.surface;
 
     in-out property <[MediaItem]> media-files;
     in-out property <[MediaItem]> queue-files;
-    in-out property <bool> sidebar-visible: false;
+    in-out property <bool> sidebar-visible: true;
     in-out property <bool> is-compact-view: false;
+    in-out property <image> video-frame;
+    in property <string> root-path;
+
+    // View State: 0 = Library, 1 = Now Playing, 2 = Video
+    in-out property <int> current-view: 0;
+    in-out property <MediaItem> current-track;
+    in-out property <float> track-progress: 0.35; // Example: 35% played
 
     callback browse-folder();
     callback play-media(int);
+    callback add-to-queue(int);
     callback toggle-shuffle();
     callback toggle-cycle();
-    callback sort-changed(string);
     callback filter-changed(string);
 
-    HorizontalBox {
-        padding: 5px;
-        
-        // Main Content Area
+    // New Player Callbacks
+    callback clear-queue();
+    callback player-play();
+    callback player-pause();
+    callback player-stop();
+    callback player-next();
+    callback player-prev();
+    callback player-seek(float);
+
+    // Queue Context Menu Callbacks
+    callback queue-move-up(int);
+    callback queue-move-down(int);
+    callback queue-delete(int);
+    callback queue-jump(int);
+
+    // ==========================================
+    // VIEW 0: LIBRARY & QUEUE
+    // ==========================================
+    if root.current-view == 0: HorizontalBox {
+        padding: 10px;
+        spacing: 10px;
+
         VerticalBox {
-            // Top Bar
+            spacing: 10px;
+
             HorizontalBox {
                 alignment: start;
-                height: 40px;
+                height: 30px;
+                spacing: 15px;
                 
-                LineEdit {
-                    placeholder-text: "Select folder...";
-                    width: 200px;
-                }
-                Button { 
-                    text: "Browse"; 
-                    clicked => { root.browse-folder() } 
-                }
-                
-                Text { text: "Filter:"; vertical-alignment: center; }
-                ComboBox {
-                    model: ["All", "Audio", "Video"];
-                    selected(value) => { root.filter-changed(value); }
-                }
-                
-                Text { text: "Sort:"; vertical-alignment: center; }
-                ComboBox {
-                    model: ["Name", "Size", "Date Modified", "Length"];
-                    selected(value) => { root.sort-changed(value); }
+                Text {
+                    text: "📁 " + root.root-path;
+                    vertical-alignment: center;
+                    font-size: 12px;
+                    color: Theme.text;
                 }
 
-                Switch {
-                    text: "Compact";
-                    checked: root.is-compact-view;
-                    toggled() => { root.is-compact-view = self.checked; }
+                RetroButton {
+                    text: "Browse Folder...";
+                    clicked => {
+                        root.browse-folder()
+                    }
                 }
 
-                Button { 
+                RetroButton {
+                    text: root.is-compact-view ? "View: Details" : "View: Compact";
+                    clicked => {
+                        root.is-compact-view = !root.is-compact-view;
+                    }
+                }
+
+                RetroButton {
                     text: root.sidebar-visible ? "Hide Queue" : "Show Queue";
-                    clicked => { root.sidebar-visible = !root.sidebar-visible; }
+                    clicked => {
+                        root.sidebar-visible = !root.sidebar-visible;
+                    }
+                }
+
+                // Quick jump to player if something is loaded
+                if root.current-track.name != "": RetroButton {
+                    text: "Now Playing >";
+                    clicked => {
+                        root.current-view = 1;
+                    }
                 }
             }
 
-            // Media List
-            ScrollView {
+            RetroFrame {
                 VerticalBox {
-                    alignment: start;
-                    for item[index] in root.media-files : Rectangle {
-                        height: root.is-compact-view ? 30px : 60px;
-                        background: item.is_playing ? #005A9E : transparent;
-                        
+                    spacing: 0px;
+                    padding: 0px;
+                    // Header (Only in Compact View)
+                    if root.is-compact-view: Rectangle {
+                        height: 25px;
+                        background: Theme.surface;
                         HorizontalBox {
+                            padding: 0px;
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 10px;
+                            Text { text: "Name"; font-weight: 700; width: 40%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
+                            Text { text: "Artist"; font-weight: 700; width: 30%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
+                            Text { text: "Dur"; font-weight: 700; width: 15%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
+                            Text { text: "Size"; font-weight: 700; width: 15%; font-size: 11px; vertical-alignment: center; color: Theme.text; }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.shadow;
+                        }
+                    }
+
+                    ScrollView {
+                        VerticalBox {
+                            alignment: start;
+                            spacing: 5px;
                             padding: 5px;
-                            if !root.is-compact-view : Rectangle {
-                                width: 40px;
-                                height: 40px;
-                                background: gray; // Placeholder for thumbnail/icon
-                            }
-                            VerticalBox {
-                                alignment: center;
-                                Text { 
-                                    text: item.name; 
-                                    font-weight: 700; 
-                                    color: item.is_playing ? white : black;
+                            for item[index] in root.media-files: VerticalLayout {
+                                spacing: 0px;
+                                
+                                // --- COMPACT VIEW (Table Row) ---
+                                if root.is-compact-view: Rectangle {
+                                    height: 30px;
+                                    border-width: 1px;
+                                    border-color: Theme.shadow;
+                                    background: item.is_playing ? Theme.active-blue : (ta-compact.has-hover ? Theme.highlight.transparentize(80%) : transparent);
+
+                                    HorizontalLayout {
+                                        padding-left: 5px;
+                                        padding-right: 5px;
+                                        spacing: 10px;
+                                        
+                                        Text {
+                                            text: (item.format == ".mp4" || item.format == ".mkv" ? "🎬 " : "🎵 ") + item.name;
+                                            color: item.is_playing ? Theme.highlight : Theme.text;
+                                            font-size: 11px;
+                                            width: 40%;
+                                            overflow: elide;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: item.artist;
+                                            font-size: 11px;
+                                            color: item.is_playing ? Theme.highlight : Theme.text;
+                                            width: 30%;
+                                            overflow: elide;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: item.duration;
+                                            font-size: 11px;
+                                            color: item.is_playing ? Theme.highlight : Theme.text;
+                                            width: 15%;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: item.size_str;
+                                            font-size: 11px;
+                                            color: item.is_playing ? Theme.highlight : Theme.text;
+                                            width: 15%;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    ta-compact := TouchArea {
+                                        clicked => {
+                                            root.current-track = item;
+                                            root.play-media(index);
+                                        }
+                                        pointer-event(pe) => {
+                                            if (pe.button == PointerEventButton.right && pe.kind == PointerEventKind.down) {
+                                                lib-menu-compact.show();
+                                            }
+                                        }
+                                    }
+
+                                    lib-menu-compact := PopupWindow {
+                                        x: ta-compact.mouse-x; y: ta-compact.mouse-y;
+                                        width: 120px;
+                                        RetroFrame {
+                                            VerticalBox {
+                                                padding: 2px;
+                                                RetroButton { 
+                                                    text: "Add to Queue"; 
+                                                    clicked => { root.add-to-queue(index); } 
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                if !root.is-compact-view : Text { 
-                                    text: item.details; 
-                                    font-size: 12px; 
-                                    color: item.is_playing ? lightgray : darkgray;
+
+                                // --- CARD VIEW (Detailed View) ---
+                                if !root.is-compact-view: RetroFrame {
+                                    height: 80px;
+                                    background: item.is_playing ? Theme.active-blue : (ta-card.has-hover ? Theme.highlight.transparentize(80%) : transparent);
+                                    
+                                    HorizontalLayout {
+                                        padding: 5px;
+                                        spacing: 15px;
+                                        
+                                        // Artwork placeholder
+                                        RetroFrame {
+                                            width: 70px;
+                                            height: 70px;
+                                            background: black;
+                                            Text {
+                                                text: (item.format == ".mp4" || item.format == ".mkv" ? "🎬" : "🎵");
+                                                color: #00ff00;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                                font-size: 24px;
+                                            }
+                                        }
+                                        
+                                        // Details
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 5px;
+                                            Text { text: item.name; font-size: 14px; font-weight: 700; color: item.is_playing ? Theme.highlight : Theme.text; overflow: elide; }
+                                            Text { text: "Artist: " + item.artist; font-size: 12px; color: item.is_playing ? Theme.highlight : Theme.text; overflow: elide; }
+                                            HorizontalLayout {
+                                                spacing: 15px;
+                                                Text { text: "Format: " + item.format; font-size: 11px; color: item.is_playing ? Theme.highlight : Theme.text; }
+                                                Text { text: "Duration: " + item.duration; font-size: 11px; color: item.is_playing ? Theme.highlight : Theme.text; }
+                                            }
+                                        }
+                                    }
+                                    
+                                    ta-card := TouchArea {
+                                        clicked => {
+                                            root.current-track = item;
+                                            root.play-media(index);
+                                        }
+                                        pointer-event(pe) => {
+                                            if (pe.button == PointerEventButton.right && pe.kind == PointerEventKind.down) {
+                                                lib-menu-card.show();
+                                            }
+                                        }
+                                    }
+
+                                    lib-menu-card := PopupWindow {
+                                        x: ta-card.mouse-x; y: ta-card.mouse-y;
+                                        width: 120px;
+                                        RetroFrame {
+                                            VerticalBox {
+                                                padding: 2px;
+                                                RetroButton { 
+                                                    text: "Add to Queue"; 
+                                                    clicked => { root.add-to-queue(index); } 
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
-                        TouchArea {
-                            clicked => { root.play-media(index); }
+                    }
+                }
+            }
+
+            // --- MINI PLAYER (Bottom of Library) ---
+            if root.current-track.name != "": RetroFrame {
+                height: 100px;
+                VerticalBox {
+                    padding: 8px;
+                    spacing: 8px;
+                    
+                    Text {
+                        text: "Now Playing: " + root.current-track.name + " (" + root.current-track.artist + ")";
+                        font-size: 11px;
+                        color: Theme.text;
+                    }
+
+                    RetroProgressBar {
+                        progress: root.track-progress;
+                        seek(p) => { root.player-seek(p); }
+                    }
+
+                    HorizontalBox {
+                        alignment: center;
+                        spacing: 8px;
+                        RetroButton { text: "▶"; clicked => { root.player-play(); } }
+                        RetroButton { text: "⏸"; clicked => { root.player-pause(); } }
+                        RetroButton { text: "⏹"; clicked => { root.player-stop(); } }
+                        
+                        Rectangle { width: 10px; } // Spacer
+
+                        RetroButton {
+                            text: "Full View >";
+                            clicked => {
+                                root.current-view = root.current-track.format == ".mp4" || root.current-track.format == ".mkv" ? 2 : 1;
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Sidebar (Queue)
-        if root.sidebar-visible : VerticalBox {
-            width: 250px;
-            
+        if root.sidebar-visible: VerticalBox {
+            width: 300px;
+            spacing: 10px;
             HorizontalBox {
                 alignment: space-between;
-                height: 40px;
-                Text { text: "Queue"; font-weight: 700; vertical-alignment: center; }
-                Button { text: "Shuffle"; clicked => { root.toggle-shuffle(); } }
-                Button { text: "Cycle"; clicked => { root.toggle-cycle(); } }
-            }
-            
-            ScrollView {
-                VerticalBox {
-                    alignment: start;
-                    for item[index] in root.queue-files : Rectangle {
-                        height: 40px;
-                        background: item.is_playing ? #107C10 : transparent;
-                        
-                        Text { 
-                            text: item.name; 
-                            color: item.is_playing ? white : black; 
-                            vertical-alignment: center; 
-                            x: 10px;
+                height: 30px;
+                Text {
+                    text: "Queue";
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+
+                HorizontalBox {
+                    spacing: 5px;
+                    RetroButton {
+                        text: "Clear";
+                        clicked => {
+                            root.clear-queue();
                         }
                     }
+                    RetroButton {
+                        text: "Shuffle";
+                        clicked => {
+                            root.toggle-shuffle();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "Cycle";
+                        clicked => {
+                            root.toggle-cycle();
+                        }
+                    }
+                }
+            }
+
+            RetroFrame {
+                ScrollView {
+                    VerticalBox {
+                        alignment: start;
+                        spacing: 0px;
+                        padding: 2px;
+                        for item[index] in root.queue-files : Rectangle {
+                            height: 25px;
+                            background: item.is_playing ? Theme.active-blue : (ta.has-hover ? Theme.highlight.transparentize(80%) : transparent);
+                            
+                            HorizontalBox {
+                                padding: 0px;
+                                padding-left: 5px;
+                                spacing: 5px;
+                                Text { 
+                                    text: (index + 1) + ". " + item.name + " [" + item.duration + "]"; 
+                                    color: item.is_playing ? Theme.highlight : Theme.text;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            ta := TouchArea {
+                                pointer-event(pe) => {
+                                    if (pe.button == PointerEventButton.right && pe.kind == PointerEventKind.down) {
+                                        menu.show();
+                                    }
+                                }
+                            }
+
+                            menu := PopupWindow {
+                                x: ta.mouse-x; y: ta.mouse-y;
+                                width: 120px;
+                                RetroFrame {
+                                    VerticalBox {
+                                        padding: 2px;
+                                        spacing: 2px;
+                                        RetroButton { text: "Move Up"; clicked => { root.queue-move-up(index); } }
+                                        RetroButton { text: "Move Down"; clicked => { root.queue-move-down(index); } }
+                                        RetroButton { text: "Delete"; clicked => { root.queue-delete(index); } }
+                                        RetroButton { text: "Jump To It"; clicked => { root.queue-jump(index); } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // VIEW 1: NOW PLAYING (Takes over Window)
+    // ==========================================
+    if root.current-view == 1: VerticalBox {
+        padding: 10px;
+        spacing: 10px;
+
+        // Top Navigation
+        HorizontalBox {
+            height: 30px;
+            alignment: start;
+            RetroButton {
+                text: "< Back to Library";
+                clicked => {
+                    root.current-view = 0;
+                }
+            }
+        }
+
+        // Main Display Area
+        HorizontalBox {
+            spacing: 10px;
+
+            // Album Art Placeholder (Win95 Visualizer box)
+            RetroFrame {
+                width: self.height; // Keep it square
+                background: black;
+                Rectangle {
+                    border-width: 2px;
+                    border-color: Theme.shadow;
+                    width: parent.width - 10px;
+                    height: parent.height - 10px;
+                    x: 5px;
+                    y: 5px;
+                    Text {
+                        text: "Visualizer / Album Art\n" + root.current-track.name;
+                        color: #00ff00; // Classic terminal green
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // Track Details
+            VerticalBox {
+                alignment: center;
+                spacing: 15px;
+
+                Text {
+                    text: root.current-track.name;
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+
+                RetroFrame {
+                    padding: 10px;
+                    height: 80px;
+                    VerticalBox {
+                        spacing: 5px;
+                        Text {
+                            text: "Artist:  " + root.current-track.artist;
+                            color: Theme.text;
+                            font-size: 14px;
+                        }
+
+                        Text {
+                            text: "Album:   " + root.current-track.details;
+                            color: Theme.text;
+                            font-size: 14px;
+                        }
+
+                        Text {
+                            text: "Format:  " + root.current-track.path;
+                            color: Theme.text;
+                            font-size: 12px;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Media Control Panel (Bottom)
+        RetroFrame {
+            height: 80px;
+            VerticalBox {
+                padding: 10px;
+                spacing: 10px;
+
+                RetroProgressBar {
+                    progress: root.track-progress;
+                    seek(p) => { root.player-seek(p); }
+                }
+
+                HorizontalBox {
+                    alignment: center;
+                    spacing: 10px;
+                    RetroButton {
+                        text: "⏮";
+                        width: 40px;
+                        clicked => {
+                            root.player-prev();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "▶";
+                        width: 60px;
+                        clicked => {
+                            root.player-play();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "⏸";
+                        width: 60px;
+                        clicked => {
+                            root.player-pause();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "⏹";
+                        width: 60px;
+                        clicked => {
+                            root.player-stop();
+                        }
+                    }
+
+                    RetroButton {
+                        text: "⏭";
+                        width: 40px;
+                        clicked => {
+                            root.player-next();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // VIEW 2: VIDEO PLAYER
+    // ==========================================
+    if root.current-view == 2 : VerticalBox {
+        padding: 10px;
+        spacing: 10px;
+
+        // Top Navigation
+        HorizontalBox {
+            height: 30px;
+            alignment: start;
+            spacing: 10px;
+            RetroButton { 
+                text: "< Back to Library"; 
+                clicked => { root.current-view = 0; } 
+            }
+            Text { 
+                text: "Playing: " + root.current-track.name; 
+                vertical-alignment: center; 
+                font-weight: 700; 
+                color: Theme.text; 
+            }
+        }
+
+        // Main Video Surface
+        RetroFrame {
+            background: black;
+            
+            // Target for VLC pixel buffer
+            Image {
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                x: 2px; y: 2px;
+                source: root.video-frame; 
+                image-fit: contain;
+            }
+            
+            if !root.current-track.is_playing : Text {
+                text: "Video Offline";
+                color: Theme.text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Media Control Panel
+        RetroFrame {
+            height: 80px;
+            VerticalBox {
+                padding: 10px;
+                spacing: 10px;
+
+                RetroProgressBar { 
+                    progress: root.track-progress; 
+                    seek(p) => { root.player-seek(p); }
+                }
+
+                HorizontalBox {
+                    alignment: center;
+                    spacing: 10px;
+                    
+                    RetroButton { text: "▶"; width: 60px; clicked => { root.player-play(); } }
+                    RetroButton { text: "⏸"; width: 60px; clicked => { root.player-pause(); } }
+                    RetroButton { text: "⏹"; width: 60px; clicked => { root.player-stop(); } }
+                    
+                    Rectangle { width: 20px; } // Spacer
+                    
+                    Text { text: "Vol:"; vertical-alignment: center; color: Theme.text; }
+                    RetroButton { text: "-"; width: 30px; } 
+                    RetroButton { text: "+"; width: 30px; } 
+                    
+                    Rectangle { width: 20px; } // Spacer
+                    
+                    RetroButton { text: "Fullscreen"; width: 80px; } 
                 }
             }
         }

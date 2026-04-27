@@ -6,6 +6,7 @@
 #include <vector>
 #include <mutex>
 #include <functional>
+#include <memory>
 
 class VlcEngine {
 public:
@@ -17,6 +18,7 @@ public:
     void play();
     void pause();
     void set_time(float seconds);
+    float get_length();
     bool is_playing();
 
     // Callbacks to send data back to main.cpp
@@ -34,4 +36,5 @@ private:
     VLC::Instance instance;
     VLC::MediaPlayer player;
     VLC::Media current_media;
+    std::unique_ptr<VLC::MediaPlayerEventManager> m_em;
 };
