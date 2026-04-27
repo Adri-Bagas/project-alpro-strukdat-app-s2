@@ -1,5 +1,4 @@
 #include "media_scan.hpp"
-
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -12,239 +11,230 @@ static std::string toLowerCopy(std::string text) {
 	return text;
 }
 
-MediaNode::MediaNode(const std::string& p) : path(p), next(nullptr) {}
+// --- MediaList Implementation ---
+namespace MediaList {
+    void init(MediaLinkedList& list) {
+        list.head = nullptr;
+        list.tail = nullptr;
+        list.count = 0;
+    }
 
-std::string MediaNode::getPath() const {
-	return path;
+    void clear(MediaLinkedList& list) {
+        while (list.head) {
+            MediaNode* temp = list.head;
+            list.head = list.head->next;
+            delete temp;
+        }
+        list.tail = nullptr;
+        list.count = 0;
+    }
+
+    void destroy(MediaLinkedList& list) {
+        clear(list);
+    }
+
+    void pushBack(MediaLinkedList& list, const std::string& path) {
+        MediaNode* node = new MediaNode{path, nullptr};
+        if (!list.head) {
+            list.head = list.tail = node;
+        } else {
+            list.tail->next = node;
+            list.tail = node;
+        }
+        list.count++;
+    }
+
+    void printAll(const MediaLinkedList& list) {
+        const MediaNode* current = list.head;
+        size_t index = 1;
+        while (current) {
+            std::cout << index << ". " << current->path << '\n';
+            current = current->next;
+            index++;
+        }
+    }
 }
 
-MediaLinkedList::MediaLinkedList() : head(nullptr), tail(nullptr), count(0) {}
+// --- MediaQueueOps Implementation ---
+namespace MediaQueueOps {
+    void init(MediaQueue& q) {
+        q.front = nullptr;
+        q.rear = nullptr;
+        q.count = 0;
+    }
 
-MediaLinkedList::~MediaLinkedList() {
-	clear();
+    void destroy(MediaQueue& q) {
+        while (!isEmpty(q)) {
+            dequeue(q);
+        }
+    }
+
+    void enqueue(MediaQueue& q, const std::string& path) {
+        MediaNode* newNode = new MediaNode{path, nullptr};
+        if (isEmpty(q)) {
+            q.front = q.rear = newNode;
+        } else {
+            q.rear->next = newNode;
+            q.rear = newNode;
+        }
+        q.count++;
+    }
+
+    std::string dequeue(MediaQueue& q) {
+        if (isEmpty(q)) return "";
+        MediaNode* temp = q.front;
+        std::string path = temp->path;
+        q.front = q.front->next;
+        if (!q.front) q.rear = nullptr;
+        delete temp;
+        q.count--;
+        return path;
+    }
+
+    std::string peek(const MediaQueue& q) {
+        return isEmpty(q) ? "" : q.front->path;
+    }
+
+    bool isEmpty(const MediaQueue& q) {
+        return q.front == nullptr;
+    }
+
+    void swapNodes(MediaQueue& q, size_t index1, size_t index2) {
+        if (index1 >= q.count || index2 >= q.count || index1 == index2) return;
+        
+        MediaNode* node1 = q.front;
+        for (size_t i = 0; i < index1; ++i) node1 = node1->next;
+        
+        MediaNode* node2 = q.front;
+        for (size_t i = 0; i < index2; ++i) node2 = node2->next;
+        
+        std::string temp = node1->path;
+        node1->path = node2->path;
+        node2->path = temp;
+    }
+
+    std::string removeAt(MediaQueue& q, size_t index) {
+        if (index >= q.count || isEmpty(q)) return "";
+        
+        MediaNode* toDelete = nullptr;
+        std::string path;
+        
+        if (index == 0) {
+            toDelete = q.front;
+            q.front = q.front->next;
+            if (!q.front) q.rear = nullptr;
+        } else {
+            MediaNode* prev = q.front;
+            for (size_t i = 0; i < index - 1; ++i) prev = prev->next;
+            toDelete = prev->next;
+            prev->next = toDelete->next;
+            if (toDelete == q.rear) q.rear = prev;
+        }
+        
+        path = toDelete->path;
+        delete toDelete;
+        q.count--;
+        return path;
+    }
 }
 
-void MediaLinkedList::pushBack(const std::string& path) {
-	MediaNode* node = new MediaNode(path);
-	if (!head) {
-		head = tail = node;
-	} else {
-		tail->next = node;
-		tail = node;
-	}
-	count++;
+// --- MediaStackOps Implementation ---
+namespace MediaStackOps {
+    void init(MediaStack& s) {
+        s.top = nullptr;
+        s.count = 0;
+    }
+
+    void destroy(MediaStack& s) {
+        while (!isEmpty(s)) {
+            pop(s);
+        }
+    }
+
+    void push(MediaStack& s, const std::string& path) {
+        MediaNode* newNode = new MediaNode{path, s.top};
+        s.top = newNode;
+        s.count++;
+    }
+
+    std::string pop(MediaStack& s) {
+        if (isEmpty(s)) return "";
+        MediaNode* temp = s.top;
+        std::string path = temp->path;
+        s.top = s.top->next;
+        delete temp;
+        s.count--;
+        return path;
+    }
+
+    std::string peek(const MediaStack& s) {
+        return isEmpty(s) ? "" : s.top->path;
+    }
+
+    bool isEmpty(const MediaStack& s) {
+        return s.top == nullptr;
+    }
 }
 
-void MediaLinkedList::clear() {
-	while (head) {
-		MediaNode* temp = head;
-		head = head->next;
-		delete temp;
-	}
-	tail = nullptr;
-	count = 0;
-}
+// --- MediaScannerOps Implementation ---
+namespace MediaScannerOps {
+    static fs::path getDefaultMediaRoot() {
+    #ifdef _WIN32
+        if (const char* userProfile = std::getenv("USERPROFILE")) {
+            return fs::path(userProfile) / "Music";
+        }
+        return fs::path("C:/Users/Default/Music");
+    #else
+        if (const char* home = std::getenv("HOME")) {
+            return fs::path(home) / "Music";
+        }
+        return fs::path("/home") / "Music";
+    #endif
+    }
 
-size_t MediaLinkedList::getSize() const {
-	return count;
-}
+    void init(MediaScanner& scanner, const fs::path& path) {
+        if (path.empty()) {
+            scanner.rootPath = getDefaultMediaRoot();
+        } else {
+            scanner.rootPath = path;
+        }
+    }
 
-bool MediaLinkedList::isEmpty() const {
-	return head == nullptr;
-}
+    bool isMediaFile(const fs::path& filePath) {
+        if (!filePath.has_extension()) {
+            return false;
+        }
 
-void MediaLinkedList::printAll() const {
-	const MediaNode* current = head;
-	size_t index = 1;
-	while (current) {
-		std::cout << index << ". " << current->getPath() << '\n';
-		current = current->next;
-		index++;
-	}
-}
+        const std::string ext = toLowerCopy(filePath.extension().string());
+        return ext == ".mp3"  || ext == ".wav"  || ext == ".flac" || ext == ".aac" ||
+               ext == ".ogg"  || ext == ".m4a"  || ext == ".wma"  || ext == ".opus" ||
+               ext == ".mp4"  || ext == ".mkv"  || ext == ".avi"  || ext == ".mov"  ||
+               ext == ".wmv"  || ext == ".webm" || ext == ".m4v";
+    }
 
-// MediaQueue Implementation
-MediaQueue::MediaQueue() : front(nullptr), rear(nullptr), count(0) {}
+    MediaLinkedList scanToLinkedList(MediaScanner& scanner) {
+        MediaLinkedList list;
+        MediaList::init(list);
 
-MediaQueue::~MediaQueue() {
-	while (!isEmpty()) {
-		dequeue();
-	}
-}
+        if (scanner.rootPath.empty() || !fs::exists(scanner.rootPath) || !fs::is_directory(scanner.rootPath)) {
+            std::cerr << "Error: Root path tidak valid atau tidak ada!\n";
+            return list;
+        }
 
-void MediaQueue::enqueue(const std::string& path) {
-	MediaNode* newNode = new MediaNode(path);
-	if (isEmpty()) {
-		front = rear = newNode;
-	} else {
-		rear->next = newNode;
-		rear = newNode;
-	}
-	count++;
-}
+        try {
+            for (const auto& entry : fs::recursive_directory_iterator(scanner.rootPath)) {
+                if (!entry.is_regular_file()) {
+                    continue;
+                }
 
-std::string MediaQueue::dequeue() {
-	if (isEmpty()) return "";
-	MediaNode* temp = front;
-	std::string path = temp->path;
-	front = front->next;
-	if (!front) rear = nullptr;
-	delete temp;
-	count--;
-	return path;
-}
+                if (isMediaFile(entry.path())) {
+                    MediaList::pushBack(list, entry.path().string());
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error saat scan folder: " << e.what() << '\n';
+        }
 
-std::string MediaQueue::peek() const {
-	return isEmpty() ? "" : front->path;
-}
-
-void MediaQueue::swapNodes(size_t index1, size_t index2) {
-	if (index1 >= count || index2 >= count || index1 == index2) return;
-	
-	MediaNode* node1 = front;
-	for (size_t i = 0; i < index1; ++i) node1 = node1->next;
-	
-	MediaNode* node2 = front;
-	for (size_t i = 0; i < index2; ++i) node2 = node2->next;
-	
-	std::string temp = node1->path;
-	node1->path = node2->path;
-	node2->path = temp;
-}
-
-std::string MediaQueue::removeAt(size_t index) {
-	if (index >= count || isEmpty()) return "";
-	
-	MediaNode* toDelete = nullptr;
-	std::string path;
-	
-	if (index == 0) {
-		toDelete = front;
-		front = front->next;
-		if (!front) rear = nullptr;
-	} else {
-		MediaNode* prev = front;
-		for (size_t i = 0; i < index - 1; ++i) prev = prev->next;
-		toDelete = prev->next;
-		prev->next = toDelete->next;
-		if (toDelete == rear) rear = prev;
-	}
-	
-	path = toDelete->path;
-	delete toDelete;
-	count--;
-	return path;
-}
-
-bool MediaQueue::isEmpty() const {
-	return front == nullptr;
-}
-
-size_t MediaQueue::getSize() const {
-	return count;
-}
-
-// MediaStack Implementation
-MediaStack::MediaStack() : top(nullptr), count(0) {}
-
-MediaStack::~MediaStack() {
-	while (!isEmpty()) {
-		pop();
-	}
-}
-
-void MediaStack::push(const std::string& path) {
-	MediaNode* newNode = new MediaNode(path);
-	newNode->next = top;
-	top = newNode;
-	count++;
-}
-
-std::string MediaStack::pop() {
-	if (isEmpty()) return "";
-	MediaNode* temp = top;
-	std::string path = temp->path;
-	top = top->next;
-	delete temp;
-	count--;
-	return path;
-}
-
-std::string MediaStack::peek() const {
-	return isEmpty() ? "" : top->path;
-}
-
-bool MediaStack::isEmpty() const {
-	return top == nullptr;
-}
-
-size_t MediaStack::getSize() const {
-	return count;
-}
-
-bool MediaScanner::isMediaFile(const fs::path& filePath) {
-	if (!filePath.has_extension()) {
-		return false;
-	}
-
-	const std::string ext = toLowerCopy(filePath.extension().string());
-	return ext == ".mp3"  || ext == ".wav"  || ext == ".flac" || ext == ".aac" ||
-		   ext == ".ogg"  || ext == ".m4a"  || ext == ".wma"  || ext == ".opus" ||
-		   ext == ".mp4"  || ext == ".mkv"  || ext == ".avi"  || ext == ".mov"  ||
-		   ext == ".wmv"  || ext == ".webm" || ext == ".m4v";
-}
-
-fs::path MediaScanner::getDefaultMediaRoot() {
-#ifdef _WIN32
-	if (const char* userProfile = std::getenv("USERPROFILE")) {
-		return fs::path(userProfile) / "Music";
-	}
-	return fs::path("C:/Users/Default/Music");
-#else
-	if (const char* home = std::getenv("HOME")) {
-		return fs::path(home) / "Music";
-	}
-	return fs::path("/home") / "Music";
-#endif
-}
-
-MediaScanner::MediaScanner() : rootPath(getDefaultMediaRoot()) {}
-
-MediaScanner::MediaScanner(const fs::path& path) : rootPath(path) {}
-
-fs::path MediaScanner::getRootPath() const {
-	return rootPath;
-}
-
-void MediaScanner::setRootPath(const fs::path& path) {
-	rootPath = path;
-}
-
-bool MediaScanner::isValidRoot() const {
-	return !rootPath.empty() && fs::exists(rootPath) && fs::is_directory(rootPath);
-}
-
-MediaLinkedList MediaScanner::scanToLinkedList() {
-	MediaLinkedList list;
-
-	if (!isValidRoot()) {
-		std::cerr << "Error: Root path tidak valid atau tidak ada!\n";
-		return list;
-	}
-
-	try {
-		for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
-			if (!entry.is_regular_file()) {
-				continue;
-			}
-
-			if (isMediaFile(entry.path())) {
-				list.pushBack(entry.path().string());
-			}
-		}
-	} catch (const std::exception& e) {
-		std::cerr << "Error saat scan folder: " << e.what() << '\n';
-	}
-
-	return list;
+        return list;
+    }
 }

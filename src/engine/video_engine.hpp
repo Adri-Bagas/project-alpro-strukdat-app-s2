@@ -8,33 +8,33 @@
 #include <functional>
 #include <memory>
 
-class VlcEngine {
-public:
-    VlcEngine();
-    ~VlcEngine();
 
-    // Core Controls
-    void load_file(const std::string& path);
-    void play();
-    void pause();
-    void set_time(float seconds);
-    float get_length();
-    bool is_playing();
-
-    // Callbacks to send data back to main.cpp
-    std::function<void(float)> on_time_changed;
-    std::function<void(float)> on_length_changed;
-    std::function<void(slint::SharedPixelBuffer<slint::Rgba8Pixel>)> on_frame_ready;
-
-    // Public memory for the C-callbacks to access
-    std::vector<uint8_t> pixel_buffer;
-    std::mutex frame_mutex;
-    unsigned int video_width;
-    unsigned int video_height;
-
-private:
+struct VlcEngine {
     VLC::Instance instance;
     VLC::MediaPlayer player;
     VLC::Media current_media;
     std::unique_ptr<VLC::MediaPlayerEventManager> m_em;
+
+    unsigned int video_width;
+    unsigned int video_height;
+    std::vector<uint8_t> pixel_buffer;
+    std::mutex frame_mutex;
+
+    // Callbacks
+    std::function<void(float)> on_time_changed;
+    std::function<void(float)> on_length_changed;
+    std::function<void(slint::SharedPixelBuffer<slint::Rgba8Pixel>)> on_frame_ready;
 };
+
+// --- LOGIC NAMESPACE ---
+
+namespace Playback {
+    void init(VlcEngine& engine);
+    void destroy(VlcEngine& engine);
+    void loadFile(VlcEngine& engine, const std::string& path);
+    void play(VlcEngine& engine);
+    void pause(VlcEngine& engine);
+    void setTime(VlcEngine& engine, float seconds);
+    float getLength(VlcEngine& engine);
+    bool isPlaying(VlcEngine& engine);
+}

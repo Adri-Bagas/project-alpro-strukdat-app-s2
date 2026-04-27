@@ -12,12 +12,17 @@ int main(int argc, char **argv)
     // 1. Initialize Engines
     VLC::Instance vlcInstance(0, nullptr);
     auto vlcEngine = std::make_shared<VlcEngine>();
+    Playback::init(*vlcEngine);
 
     // 2. Initialize Models and Data Structures
     auto mediaModel = std::make_shared<slint::VectorModel<MediaItem>>();
     auto queueModel = std::make_shared<slint::VectorModel<MediaItem>>();
+    
     MediaQueue playbackQueue;
+    MediaQueueOps::init(playbackQueue);
+    
     MediaStack playbackHistory;
+    MediaStackOps::init(playbackHistory);
 
     ui->set_media_files(mediaModel);
     ui->set_queue_files(queueModel);
@@ -38,8 +43,8 @@ int main(int argc, char **argv)
             queueModel->set_row_data(i, row);
         }
 
-        vlcEngine->load_file(path);
-        vlcEngine->play();
+        Playback::loadFile(*vlcEngine, path);
+        Playback::play(*vlcEngine);
         ui->set_current_track(item);
         ui->set_track_progress(0.0f); // Reset progress on new track
 
@@ -58,7 +63,7 @@ int main(int argc, char **argv)
     vlcEngine->on_time_changed = [ui, currentLength, vlcEngine](float time) {
         slint::invoke_from_event_loop([ui, time, currentLength, vlcEngine]() {
             if (*currentLength <= 0.0f) {
-                *currentLength = vlcEngine->get_length();
+                *currentLength = Playback::getLength(*vlcEngine);
             }
             if (*currentLength > 0.0f) {
                 ui->set_track_progress(time / (*currentLength));
@@ -73,11 +78,11 @@ int main(int argc, char **argv)
 
     ui->on_player_seek([vlcEngine, currentLength](float progress) {
         if (*currentLength <= 0.0f) {
-            *currentLength = vlcEngine->get_length();
+            *currentLength = Playback::getLength(*vlcEngine);
         }
         printf("Seek requested to %f%%. Current length: %f\n", progress * 100.0f, *currentLength);
         if (*currentLength > 0.0f) {
-            vlcEngine->set_time(progress * (*currentLength));
+            Playback::setTime(*vlcEngine, progress * (*currentLength));
         }
     });
 
@@ -89,11 +94,12 @@ int main(int argc, char **argv)
 
     // 4. Scan for Media Files
     MediaScanner mediaScanner;
-    ui->set_root_path(mediaScanner.getRootPath().string().c_str());
-    MediaLinkedList mediaList = mediaScanner.scanToLinkedList();
+    MediaScannerOps::init(mediaScanner);
+    ui->set_root_path(mediaScanner.rootPath.string().c_str());
+    MediaLinkedList mediaList = MediaScannerOps::scanToLinkedList(mediaScanner);
 
     MediaNode* current = mediaList.head;
-    printf("Found %zu media files. Starting metadata extraction...\n", mediaList.getSize());
+    printf("Found %zu media files. Starting metadata extraction...\n", mediaList.count);
     while (current != nullptr) {
         parse_media_vlcpp(vlcInstance, current->path, mediaModel);
         current = current->next;
@@ -105,13 +111,13 @@ int main(int argc, char **argv)
             auto item = mediaModel->row_data(index).value();
             std::string path = std::string(item.path.data());
             
-            // Clear existing queue logic as requested
-            while (!playbackQueue.isEmpty()) playbackQueue.dequeue();
+            // Clear existing queue logic
+            while (!MediaQueueOps::isEmpty(playbackQueue)) MediaQueueOps::dequeue(playbackQueue);
             while (queueModel->row_count() > 0) queueModel->erase(0);
 
             // Add the new song as the ONLY item in the queue
-            playbackHistory.push(path);
-            playbackQueue.enqueue(path);
+            MediaStackOps::push(playbackHistory, path);
+            MediaQueueOps::enqueue(playbackQueue, path);
             queueModel->push_back(item);
 
             playPath(path, item);
@@ -123,8 +129,7 @@ int main(int argc, char **argv)
             auto item = mediaModel->row_data(index).value();
             std::string path = std::string(item.path.data());
             
-            // Just add to queue, don't clear or play
-            playbackQueue.enqueue(path);
+            MediaQueueOps::enqueue(playbackQueue, path);
             queueModel->push_back(item);
             
             printf("Added to queue (manual): %s\n", path.c_str());
@@ -132,14 +137,13 @@ int main(int argc, char **argv)
     });
 
     ui->on_player_next([&]() {
-        if (!playbackQueue.isEmpty()) {
-            std::string path = playbackQueue.dequeue();
+        if (!MediaQueueOps::isEmpty(playbackQueue)) {
+            std::string path = MediaQueueOps::dequeue(playbackQueue);
             
-            // Find item in queueModel to get metadata, then remove it
             for (int i = 0; i < queueModel->row_count(); ++i) {
                 auto item = queueModel->row_data(i).value();
                 if (std::string(item.path.data()) == path) {
-                    playbackHistory.push(path); // Add to history before playing next
+                    MediaStackOps::push(playbackHistory, path);
                     playPath(path, item);
                     queueModel->erase(i);
                     break;
@@ -149,19 +153,16 @@ int main(int argc, char **argv)
     });
 
     ui->on_player_prev([&]() {
-        if (!playbackHistory.isEmpty()) {
-            // Pop the CURRENT song first (since it was the last pushed)
-            std::string currentPath = playbackHistory.pop();
+        if (!MediaStackOps::isEmpty(playbackHistory)) {
+            std::string currentPath = MediaStackOps::pop(playbackHistory);
             
-            // Now pop the PREVIOUS song to play it
-            if (!playbackHistory.isEmpty()) {
-                std::string prevPath = playbackHistory.pop();
+            if (!MediaStackOps::isEmpty(playbackHistory)) {
+                std::string prevPath = MediaStackOps::pop(playbackHistory);
                 
-                // Find metadata in main mediaModel
                 for (int i = 0; i < mediaModel->row_count(); ++i) {
                     auto item = mediaModel->row_data(i).value();
                     if (std::string(item.path.data()) == prevPath) {
-                        playbackHistory.push(prevPath); // Re-push as it's now "current"
+                        MediaStackOps::push(playbackHistory, prevPath);
                         playPath(prevPath, item);
                         break;
                     }
@@ -171,13 +172,13 @@ int main(int argc, char **argv)
     });
 
     ui->on_clear_queue([&]() {
-        while (!playbackQueue.isEmpty()) playbackQueue.dequeue();
+        while (!MediaQueueOps::isEmpty(playbackQueue)) MediaQueueOps::dequeue(playbackQueue);
         while (queueModel->row_count() > 0) queueModel->erase(0);
     });
 
     ui->on_queue_move_up([&](int index) {
         if (index > 0 && index < queueModel->row_count()) {
-            playbackQueue.swapNodes(index, index - 1);
+            MediaQueueOps::swapNodes(playbackQueue, index, index - 1);
             auto item1 = queueModel->row_data(index).value();
             auto item2 = queueModel->row_data(index - 1).value();
             queueModel->set_row_data(index, item2);
@@ -187,7 +188,7 @@ int main(int argc, char **argv)
 
     ui->on_queue_move_down([&](int index) {
         if (index >= 0 && index < queueModel->row_count() - 1) {
-            playbackQueue.swapNodes(index, index + 1);
+            MediaQueueOps::swapNodes(playbackQueue, index, index + 1);
             auto item1 = queueModel->row_data(index).value();
             auto item2 = queueModel->row_data(index + 1).value();
             queueModel->set_row_data(index, item2);
@@ -197,39 +198,38 @@ int main(int argc, char **argv)
 
     ui->on_queue_delete([&](int index) {
         if (index >= 0 && index < queueModel->row_count()) {
-            playbackQueue.removeAt(index);
+            MediaQueueOps::removeAt(playbackQueue, index);
             queueModel->erase(index);
         }
     });
 
     ui->on_queue_jump([&](int index) {
         if (index >= 0 && index < queueModel->row_count()) {
-            // 1. All previous songs moved to history and removed from queue
             for (int i = 0; i < index; ++i) {
-                std::string path = playbackQueue.dequeue();
-                playbackHistory.push(path);
+                std::string path = MediaQueueOps::dequeue(playbackQueue);
+                MediaStackOps::push(playbackHistory, path);
                 queueModel->erase(0);
             }
 
-            // 2. Play the current target without removing it from the queue
-            // We just peek the path since we want it to stay in the queue
-            std::string path = playbackQueue.peek(); 
+            std::string path = MediaQueueOps::peek(playbackQueue); 
             auto item = queueModel->row_data(0).value();
-            
-            // Note: We don't push to history here because it's now the "current" track
-            // It will be pushed to history when the NEXT track starts.
             playPath(path, item);
         }
     });
 
-    ui->on_player_play([vlcEngine]() { vlcEngine->play(); });
-    ui->on_player_pause([vlcEngine]() { vlcEngine->pause(); });
+    ui->on_player_play([vlcEngine]() { Playback::play(*vlcEngine); });
+    ui->on_player_pause([vlcEngine]() { Playback::pause(*vlcEngine); });
     ui->on_player_stop([vlcEngine]() { 
-        // We'll treat stop as pause + reset time for now
-        vlcEngine->pause();
-        vlcEngine->set_time(0);
+        Playback::pause(*vlcEngine);
+        Playback::setTime(*vlcEngine, 0);
     });
 
     ui->run();
+    
+    Playback::destroy(*vlcEngine);
+    MediaList::destroy(mediaList);
+    MediaQueueOps::destroy(playbackQueue);
+    MediaStackOps::destroy(playbackHistory);
+
     return 0;
 }

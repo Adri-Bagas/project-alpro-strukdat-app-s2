@@ -4,85 +4,68 @@
 #include <filesystem>
 #include <string>
 
+
 namespace fs = std::filesystem;
 
-class MediaNode {
-private:
 
-
-    friend class MediaLinkedList;
-
-public:
+struct MediaNode {
     std::string path;
     MediaNode* next;
-    explicit MediaNode(const std::string& p);
-
-    std::string getPath() const;
 };
 
-class MediaLinkedList {
-private:
-    size_t count;
-
-public:
+struct MediaLinkedList {
     MediaNode* head;
     MediaNode* tail;
-    MediaLinkedList();
-    ~MediaLinkedList();
-
-    void pushBack(const std::string& path);
-    void clear();
-    size_t getSize() const;
-    bool isEmpty() const;
-    void printAll() const;
+    size_t count;
 };
 
-class MediaQueue {
-private:
+struct MediaQueue {
     MediaNode* front;
     MediaNode* rear;
     size_t count;
-
-public:
-    MediaQueue();
-    ~MediaQueue();
-    void enqueue(const std::string& path);
-    std::string dequeue();
-    std::string peek() const;
-    void swapNodes(size_t index1, size_t index2);
-    std::string removeAt(size_t index);
-    bool isEmpty() const;
-    size_t getSize() const;
 };
 
-class MediaStack {
-private:
+struct MediaStack {
     MediaNode* top;
     size_t count;
-
-public:
-    MediaStack();
-    ~MediaStack();
-    void push(const std::string& path);
-    std::string pop();
-    std::string peek() const;
-    bool isEmpty() const;
-    size_t getSize() const;
 };
 
-class MediaScanner {
-private:
+struct MediaScanner {
     fs::path rootPath;
-
-    static bool isMediaFile(const fs::path& filePath);
-    static fs::path getDefaultMediaRoot();
-
-public:
-    MediaScanner();
-    explicit MediaScanner(const fs::path& path);
-
-    fs::path getRootPath() const;
-    void setRootPath(const fs::path& path);
-    bool isValidRoot() const;
-    MediaLinkedList scanToLinkedList();
 };
+
+// --- NAMESPACES FOR LOGIC ---
+
+namespace MediaList {
+    void init(MediaLinkedList& list);
+    void destroy(MediaLinkedList& list);
+    void pushBack(MediaLinkedList& list, const std::string& path);
+    void clear(MediaLinkedList& list);
+    void printAll(const MediaLinkedList& list);
+}
+
+namespace MediaQueueOps {
+    void init(MediaQueue& q);
+    void destroy(MediaQueue& q);
+    void enqueue(MediaQueue& q, const std::string& path);
+    std::string dequeue(MediaQueue& q);
+    std::string peek(const MediaQueue& q);
+    void swapNodes(MediaQueue& q, size_t index1, size_t index2);
+    std::string removeAt(MediaQueue& q, size_t index);
+    bool isEmpty(const MediaQueue& q);
+}
+
+namespace MediaStackOps {
+    void init(MediaStack& s);
+    void destroy(MediaStack& s);
+    void push(MediaStack& s, const std::string& path);
+    std::string pop(MediaStack& s);
+    std::string peek(const MediaStack& s);
+    bool isEmpty(const MediaStack& s);
+}
+
+namespace MediaScannerOps {
+    void init(MediaScanner& scanner, const fs::path& path = "");
+    MediaLinkedList scanToLinkedList(MediaScanner& scanner);
+    bool isMediaFile(const fs::path& filePath);
+}

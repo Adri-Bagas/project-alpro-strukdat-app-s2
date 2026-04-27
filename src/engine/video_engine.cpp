@@ -1,81 +1,80 @@
 #include "video_engine.hpp"
 #include <cstring>
 
-// --- C++ CLASS IMPLEMENTATION ---
+namespace Playback {
 
-VlcEngine::VlcEngine() 
-    : video_width(1280), video_height(720) 
-{
-    // 1. Initialize VLC Engine
-    instance = VLC::Instance(0, nullptr);
-    player = VLC::MediaPlayer(instance);
+    void init(VlcEngine& engine) {
+        engine.video_width = 1280;
+        engine.video_height = 720;
 
-    // 2. Set up Memory Rendering
-    pixel_buffer.resize(video_width * video_height * 4);
+        // 1. Initialize VLC Engine
+        engine.instance = VLC::Instance(0, nullptr);
+        engine.player = VLC::MediaPlayer(engine.instance);
 
-    // Use lambdas that capture 'this' to handle callbacks in a C++ way
-    player.setVideoCallbacks(
-        [this](void** planes) -> void* {
-            this->frame_mutex.lock();
-            *planes = this->pixel_buffer.data();
-            return nullptr;
-        },
-        [this](void* picture, void* const* planes) {
-            if (this->on_frame_ready) {
-                slint::SharedPixelBuffer<slint::Rgba8Pixel> slint_buffer(this->video_width, this->video_height);
-                std::memcpy(slint_buffer.begin(), this->pixel_buffer.data(), this->pixel_buffer.size());
+        // 2. Set up Memory Rendering
+        engine.pixel_buffer.resize(engine.video_width * engine.video_height * 4);
 
-                // Fire the callback to send the pixels to main.cpp!
-                this->on_frame_ready(slint_buffer);
+        // Use lambdas that capture '&engine' to handle callbacks
+        engine.player.setVideoCallbacks(
+            [&engine](void** planes) -> void* {
+                engine.frame_mutex.lock();
+                *planes = engine.pixel_buffer.data();
+                return nullptr;
+            },
+            [&engine](void* picture, void* const* planes) {
+                if (engine.on_frame_ready) {
+                    slint::SharedPixelBuffer<slint::Rgba8Pixel> slint_buffer(engine.video_width, engine.video_height);
+                    std::memcpy(slint_buffer.begin(), engine.pixel_buffer.data(), engine.pixel_buffer.size());
+                    engine.on_frame_ready(slint_buffer);
+                }
+                engine.frame_mutex.unlock();
+            },
+            nullptr
+        );
+        engine.player.setVideoFormat("RGBA", engine.video_width, engine.video_height, engine.video_width * 4);
+
+        // 3. Attach Event Listeners
+        engine.m_em = std::make_unique<VLC::MediaPlayerEventManager>(engine.player.eventManager());
+
+        engine.m_em->onTimeChanged([&engine](int64_t new_time_ms) {
+            if (engine.on_time_changed) {
+                engine.on_time_changed(new_time_ms / 1000.0f);
             }
-            this->frame_mutex.unlock();
-        },
-        nullptr
-    );
-    player.setVideoFormat("RGBA", video_width, video_height, video_width * 4);
+        });
 
-    // 3. Attach Event Listeners
-    m_em = std::make_unique<VLC::MediaPlayerEventManager>(player.eventManager());
+        engine.m_em->onLengthChanged([&engine](int64_t new_length_ms) {
+            if (engine.on_length_changed) {
+                engine.on_length_changed(new_length_ms / 1000.0f);
+            }
+        });
+    }
 
-    m_em->onTimeChanged([this](int64_t new_time_ms) {
-        if (on_time_changed) {
-            on_time_changed(new_time_ms / 1000.0f);
-        }
-    });
+    void destroy(VlcEngine& engine) {
+        engine.player.stop();
+    }
 
-    m_em->onLengthChanged([this](int64_t new_length_ms) {
-        if (on_length_changed) {
-            on_length_changed(new_length_ms / 1000.0f);
-        }
-    });
-}
+    void loadFile(VlcEngine& engine, const std::string& path) {
+        engine.current_media = VLC::Media(engine.instance, path, VLC::Media::FromPath);
+        engine.player.setMedia(engine.current_media);
+    }
 
-VlcEngine::~VlcEngine() {
-    player.stop();
-    // libvlcpp automatically handles the rest of the cleanup!
-}
+    void play(VlcEngine& engine) {
+        engine.player.play();
+    }
 
-void VlcEngine::load_file(const std::string& path) {
-    current_media = VLC::Media(instance, path, VLC::Media::FromPath);
-    player.setMedia(current_media);
-}
+    void pause(VlcEngine& engine) {
+        engine.player.pause();
+    }
 
-void VlcEngine::play() {
-    player.play();
-}
+    void setTime(VlcEngine& engine, float seconds) {
+        engine.player.setTime(static_cast<int64_t>(seconds * 1000));
+    }
 
-void VlcEngine::pause() {
-    player.pause();
-}
+    float getLength(VlcEngine& engine) {
+        return engine.player.length() / 1000.0f;
+    }
 
-void VlcEngine::set_time(float seconds) {
-    player.setTime(static_cast<int64_t>(seconds * 1000));
-}
-
-float VlcEngine::get_length() {
-    return player.length() / 1000.0f;
-}
-
-bool VlcEngine::is_playing() {
-    return player.isPlaying();
+    bool isPlaying(VlcEngine& engine) {
+        return engine.player.isPlaying();
+    }
 }
