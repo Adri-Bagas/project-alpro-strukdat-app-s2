@@ -14,6 +14,7 @@ In order to use this template and build a C++ application, you need to install a
 
   * **[cmake](https://cmake.org/download/)** (3.21 or newer)
   * A C++ compiler that supports C++ 20 
+  * **libvlc**: Untuk pengguna Windows, silakan unduh libvlc secara manual dan ekstrak seluruh isi folder `x64` ke `C:/libvlc`. Untuk pengguna Linux/macOS, libvlc dapat diinstal melalui package manager.
 
 If your target environment is Linux or Windows on an x86-64 architecture, then you may also opt into downloading one of our binary Slint packages. These are pre-compiled and require no further tools. You can find setup instructions and download links at
 
