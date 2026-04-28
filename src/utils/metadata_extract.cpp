@@ -73,6 +73,20 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
             std::string art = media.meta(libvlc_meta_ArtworkURL);
             int64_t duration_ms = media.duration();
 
+            // Extract native resolution
+            unsigned v_width = 0;
+            unsigned v_height = 0;
+            libvlc_media_track_t** tracks;
+            unsigned count = libvlc_media_tracks_get(media, &tracks);
+            for (unsigned i = 0; i < count; ++i) {
+                if (tracks[i]->i_type == libvlc_track_video && tracks[i]->video) {
+                    v_width = tracks[i]->video->i_width;
+                    v_height = tracks[i]->video->i_height;
+                    break;
+                }
+            }
+            if (count > 0) libvlc_media_tracks_release(tracks, count);
+
             // Apply fallbacks for missing data
             if (title.empty()) title = filename;
             if (artist.empty()) artist = "Unknown Artist";
@@ -82,11 +96,9 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
             std::string dur_str = format_duration(duration_ms);
 
             // 3. UI Thread Dispatch
-            slint::invoke_from_event_loop([title, artist, album, filepath, dur_str, size_str, format, track_num, art, ui_model]() {
+            slint::invoke_from_event_loop([title, artist, album, filepath, dur_str, size_str, format, track_num, art, v_width, v_height, ui_model]() {
                 std::string cleaned_art = art;
                 if (!art.empty()) {
-                    // VLC typically returns file:///path on Linux
-                    // We remove the file:// prefix but keep the leading / for absolute paths
                     if (art.compare(0, 7, "file://") == 0) {
                         cleaned_art = art.substr(7);
                     }
@@ -96,11 +108,8 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
                 bool actually_has_art = false;
                 slint::Image art_img;
                 if (!cleaned_art.empty() && fs::exists(cleaned_art)) {
-                    printf("[ART] Loading artwork for '%s' from: %s\n", title.c_str(), cleaned_art.c_str());
                     art_img = slint::Image::load_from_path(cleaned_art.c_str());
                     actually_has_art = true;
-                } else if (!art.empty()) {
-                    printf("[ART] Invalid or missing artwork path for '%s': %s\n", title.c_str(), cleaned_art.c_str());
                 }
 
                 MediaItem item;
@@ -116,7 +125,8 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
                 item.art_url = art_img;
                 item.has_icon = actually_has_art;
                 item.is_playing = false;
-                
+                item.video_width = v_width;
+                item.video_height = v_height;
 
                 ui_model->push_back(item);
             });

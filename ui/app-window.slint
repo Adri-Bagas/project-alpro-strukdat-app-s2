@@ -13,7 +13,9 @@ export struct MediaItem {
     format: string,     // ".mp3", ".mp4"
     track_num: string,
     art_url: image,
-}
+    video_width: int,
+    video_height: int
+    }
 
 export global Theme {
     in property <color> surface: #c0c0c0;
@@ -146,6 +148,8 @@ component RetroProgressBar inherits RetroFrame {
 
 export component AppWindow inherits Window {
 
+    min-height: 600px;
+    min-width: 900px;
     title: "Media Player";
     background: Theme.surface;
 
@@ -162,6 +166,7 @@ export component AppWindow inherits Window {
     in-out property <float> track-progress: 0.35; // Example: 35% played
 
     in-out property <bool> is-fullscreen: false;
+    in-out property <bool> cycle-mode: false;
 
     callback browse-folder();
     callback play-media(int);
@@ -612,7 +617,7 @@ export component AppWindow inherits Window {
                     }
 
                     RetroButton {
-                        text: "Cycle";
+                        text: root.cycle-mode ? "Cycle: ON" : "Cycle: OFF";
                         clicked => {
                             root.toggle-cycle();
                         }
@@ -854,7 +859,7 @@ export component AppWindow inherits Window {
         spacing: 10px;
 
         // Top Navigation
-        if !root.is-fullscreen : HorizontalBox {
+        if !root.is-fullscreen: HorizontalBox {
             height: 30px;
             alignment: start;
             spacing: 10px;
@@ -876,6 +881,7 @@ export component AppWindow inherits Window {
         // Main Video Surface
         RetroFrame {
             background: black;
+            forward-focus: scope;
 
             // Target for VLC pixel buffer
             Image {
@@ -896,10 +902,31 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+
+            scope := FocusScope {
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        if (is-fullscreen) {
+                            root.toggle-fullscreen();
+                        }
+                        return accept;
+                    }
+                    if (event.text == "k" || event.text == "K") {
+                        root.player-play();
+                        return accept;
+                    }
+                    if (event.text == " ") { // Tombol spasi
+                        root.player-pause();
+                        return accept;
+                    }
+                    
+                    return reject;
+                }
+            }
         }
 
         // Media Control Panel
-        if !root.is-fullscreen : RetroFrame {
+        if !root.is-fullscreen: RetroFrame {
             height: 80px;
             VerticalBox {
                 padding: 10px;
@@ -967,12 +994,12 @@ export component AppWindow inherits Window {
                     RetroButton {
                         text: "Fullscreen";
                         width: 80px;
-                        clicked => { root.toggle-fullscreen(); }
+                        clicked => {
+                            root.toggle-fullscreen();
+                        }
                     }
                 }
             }
         }
-
-        
     }
 }

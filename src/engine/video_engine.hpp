@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 
+// --- DATA STRUCTURE (Pure Data) ---
 
 struct VlcEngine {
     VLC::Instance instance;
@@ -23,10 +24,8 @@ struct VlcEngine {
     // Callbacks
     std::function<void(float)> on_time_changed;
     std::function<void(float)> on_length_changed;
+    std::function<void()> on_end_reached;
     std::function<void(slint::SharedPixelBuffer<slint::Rgba8Pixel>)> on_frame_ready;
-
-    
-    
 };
 
 // --- LOGIC NAMESPACE ---
@@ -34,11 +33,10 @@ struct VlcEngine {
 namespace Playback {
     void init(VlcEngine& engine);
     void destroy(VlcEngine& engine);
-    void loadFile(VlcEngine& engine, const std::string& path);
+    void loadFile(VlcEngine& engine, const std::string& path, unsigned width, unsigned height);
     void play(VlcEngine& engine);
     void pause(VlcEngine& engine);
     void setTime(VlcEngine& engine, float seconds);
     float getLength(VlcEngine& engine);
     bool isPlaying(VlcEngine& engine);
-    void update_resolution(VlcEngine& engine);
 }

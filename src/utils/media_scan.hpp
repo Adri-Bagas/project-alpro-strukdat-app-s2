@@ -4,13 +4,14 @@
 #include <filesystem>
 #include <string>
 
-
 namespace fs = std::filesystem;
 
+// --- DATA STRUCTURES (Pure Data) ---
 
 struct MediaNode {
     std::string path;
     MediaNode* next;
+    MediaNode* prev; // Added for Doubly Linked List
 };
 
 struct MediaLinkedList {
@@ -47,12 +48,16 @@ namespace MediaList {
 namespace MediaQueueOps {
     void init(MediaQueue& q);
     void destroy(MediaQueue& q);
+    // Circular Doubly Linked List implementation for Queue
     void enqueue(MediaQueue& q, const std::string& path);
     std::string dequeue(MediaQueue& q);
     std::string peek(const MediaQueue& q);
     void swapNodes(MediaQueue& q, size_t index1, size_t index2);
     std::string removeAt(MediaQueue& q, size_t index);
     bool isEmpty(const MediaQueue& q);
+    
+    // Cycle helpers
+    void rotateForward(MediaQueue& q); // Move front to next, for cycling
 }
 
 namespace MediaStackOps {
