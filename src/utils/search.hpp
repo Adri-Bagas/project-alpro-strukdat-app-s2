@@ -15,13 +15,16 @@ namespace SearchUtils {
     }
 
     template <typename T, typename MatchFn>
-    bool linear_search_if(const std::vector<T>& data, MatchFn match_fn) {
+    std::vector<T> linear_search_if(const std::vector<T>& data, MatchFn match_fn) {
+        std::vector<T> result;
+
         for (const auto& item : data) {
             if (match_fn(item)) {
-                return true;
+                result.push_back(item);
             }
         }
-        return false;
+
+        return result;
     }
 
 } // namespace SearchUtils
