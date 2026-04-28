@@ -18,7 +18,6 @@ int main(int argc, char **argv)
         "--file-caching=1500",
         "--network-caching=1500"
     };
-    VLC::Instance vlcInstance(sizeof(vlc_args) / sizeof(vlc_args[0]), vlc_args);
     auto vlcEngine = std::make_shared<VlcEngine>();
     Playback::init(*vlcEngine);
 
@@ -117,7 +116,7 @@ int main(int argc, char **argv)
     MediaNode* current = mediaList.head;
     printf("Found %zu media files.\n", mediaList.count);
     while (current != nullptr) {
-        parse_media_vlcpp(vlcInstance, current->path, mediaModel);
+        parse_media_vlcpp(vlcEngine->instance, current->path, mediaModel);
         current = current->next;
     }
 
