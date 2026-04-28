@@ -49,12 +49,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(libvlcpp)
 
+# --- 2.5 NFD SETUP ---
+FetchContent_Declare(
+    nfd
+    GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+    GIT_TAG        master
+)
+FetchContent_MakeAvailable(nfd)
+
 # --- 3. BUILD THE APP ---
 add_executable(my_application
   src/main.cpp
   src/utils/media_scan.cpp
   src/engine/video_engine.cpp
   src/utils/metadata_extract.cpp
+  src/utils/file_dialog.cpp
 )
 slint_target_sources(my_application ui/app-window.slint)
 
@@ -64,7 +73,7 @@ target_include_directories(my_application PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${
 
 # --- 5. LINK ALL LIBRARIES (Updated) ---
 # Notice we added PkgConfig::VLC and libvlcpp here!
-target_link_libraries(my_application PRIVATE Slint::Slint PkgConfig::VLC)
+target_link_libraries(my_application PRIVATE Slint::Slint PkgConfig::VLC nfd)
 
 # On Windows, copy the Slint DLL next to the application binary so that it's found.
 if (WIN32)

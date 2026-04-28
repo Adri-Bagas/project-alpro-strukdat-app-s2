@@ -1,5 +1,6 @@
 #include "app-window.h"
 #include "utils/media_scan.hpp"
+#include "utils/file_dialog.hpp"
 #include "utils/metadata_extract.hpp"
 #include "engine/video_engine.hpp"
 #include "utils/sort.hpp"
@@ -9,6 +10,7 @@
 
 int main(int argc, char **argv)
 {
+    FileDialog::init();
     auto ui = AppWindow::create();
 
     // 1. Initialize Engines
@@ -118,6 +120,25 @@ int main(int argc, char **argv)
     }
 
     // 5. Setup UI Callbacks
+    ui->on_browse_folder([&]() {
+        std::string selectedFolder = FileDialog::pickFolder();
+        if (!selectedFolder.empty()) {
+            MediaScannerOps::init(mediaScanner, selectedFolder);
+            ui->set_root_path(mediaScanner.rootPath.string().c_str());
+            
+            MediaList::destroy(mediaList);
+            mediaList = MediaScannerOps::scanToLinkedList(mediaScanner);
+            
+            while(mediaModel->row_count() > 0) mediaModel->erase(0);
+            
+            MediaNode* curr = mediaList.head;
+            while (curr != nullptr) {
+                parse_media_vlcpp(vlcInstance, curr->path, mediaModel);
+                curr = curr->next;
+            }
+        }
+    });
+
     ui->on_play_media([&](int index) {
         if (index >= 0 && index < mediaModel->row_count()) {
             auto item = mediaModel->row_data(index).value();
@@ -298,6 +319,7 @@ int main(int argc, char **argv)
     MediaList::destroy(mediaList);
     MediaQueueOps::destroy(playbackQueue);
     MediaStackOps::destroy(playbackHistory);
+    FileDialog::quit();
 
     return 0;
 }
