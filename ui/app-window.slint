@@ -216,8 +216,8 @@ export component AppWindow inherits Window {
                     }
 
                     HorizontalBox {
-                        alignment: start; 
-                        spacing: 5px;     
+                        alignment: start;
+                        spacing: 5px;
 
                         RetroButton {
                             text: "Browse Folder...";
@@ -558,6 +558,15 @@ export component AppWindow inherits Window {
                     HorizontalBox {
                         alignment: center;
                         spacing: 8px;
+
+                        RetroButton {
+                            text: "⏮";
+                            width: 40px;
+                            clicked => {
+                                root.player-prev();
+                            }
+                        }
+
                         RetroButton {
                             text: "▶";
                             clicked => {
@@ -576,6 +585,14 @@ export component AppWindow inherits Window {
                             text: "⏹";
                             clicked => {
                                 root.player-stop();
+                            }
+                        }
+
+                        RetroButton {
+                            text: "⏭";
+                            width: 40px;
+                            clicked => {
+                                root.player-next();
                             }
                         }
 
@@ -771,7 +788,6 @@ export component AppWindow inherits Window {
                 }
 
                 RetroFrame {
-                    padding: 10px;
                     height: 80px;
                     VerticalBox {
                         spacing: 5px;
@@ -950,6 +966,14 @@ export component AppWindow inherits Window {
                     spacing: 10px;
 
                     RetroButton {
+                        text: "⏮";
+                        width: 40px;
+                        clicked => {
+                            root.player-prev();
+                        }
+                    }
+
+                    RetroButton {
                         text: "▶";
                         width: 60px;
                         clicked => {
@@ -973,29 +997,37 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    Rectangle {
-                        width: 20px;
-                    } // Spacer
-                    
-                    Text {
-                        text: "Vol:";
-                        vertical-alignment: center;
-                        color: Theme.text;
-                    }
-
                     RetroButton {
-                        text: "-";
-                        width: 30px;
-                    }
-
-                    RetroButton {
-                        text: "+";
-                        width: 30px;
+                        text: "⏭";
+                        width: 40px;
+                        clicked => {
+                            root.player-next();
+                        }
                     }
 
                     Rectangle {
                         width: 20px;
                     } // Spacer
+                    
+                    // Text {
+                    //     text: "Vol:";
+                    //     vertical-alignment: center;
+                    //     color: Theme.text;
+                    // }
+
+                    // RetroButton {
+                    //     text: "-";
+                    //     width: 30px;
+                    // }
+
+                    // RetroButton {
+                    //     text: "+";
+                    //     width: 30px;
+                    // }
+
+                    // Rectangle {
+                    //     width: 20px;
+                    // } // Spacer
                     
                     RetroButton {
                         text: "Fullscreen";

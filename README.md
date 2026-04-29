@@ -42,11 +42,11 @@ Alternatively, this template will automatically download the Slint sources and c
 5. Run the application binary
     * Linux/macOS:
         ```
-        ./build/my_application
+        ./build/smp
         ```
     * Windows:
         ```
-        build\my_application.exe
+        build\smp.exe
         ```
 
 We recommend using an IDE for development, along with our [LSP-based IDE integration for `.slint` files](https://github.com/slint-ui/slint/blob/master/tools/lsp/README.md). You can also load this project directly in [Visual Studio Code](https://code.visualstudio.com) and install our [Slint extension](https://marketplace.visualstudio.com/items?itemName=Slint.slint).

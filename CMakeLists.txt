@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(my_application LANGUAGES CXX)
+project(smp LANGUAGES CXX)
 
 # Always generate the map for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -58,24 +58,24 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nfd)
 
 # --- 3. BUILD THE APP ---
-add_executable(my_application
+add_executable(smp
   src/main.cpp
   src/utils/media_scan.cpp
   src/engine/video_engine.cpp
   src/utils/metadata_extract.cpp
   src/utils/file_dialog.cpp
 )
-slint_target_sources(my_application ui/app-window.slint)
+slint_target_sources(smp ui/app-window.slint)
 
 # --- 4. FIX CLANGD AUTOCOMPLETE (Added) ---
 # This forces the compiler to look in the build folder for generated headers
-target_include_directories(my_application PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${libvlcpp_SOURCE_DIR})
+target_include_directories(smp PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${libvlcpp_SOURCE_DIR})
 
 # --- 5. LINK ALL LIBRARIES (Updated) ---
 # Notice we added PkgConfig::VLC and libvlcpp here!
-target_link_libraries(my_application PRIVATE Slint::Slint PkgConfig::VLC nfd)
+target_link_libraries(smp PRIVATE Slint::Slint PkgConfig::VLC nfd)
 
 # On Windows, copy the Slint DLL next to the application binary so that it's found.
 if (WIN32)
-    add_custom_command(TARGET my_application POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:my_application> $<TARGET_FILE_DIR:my_application> COMMAND_EXPAND_LISTS)
+    add_custom_command(TARGET smp POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:smp> $<TARGET_FILE_DIR:smp> COMMAND_EXPAND_LISTS)
 endif()

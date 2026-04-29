@@ -4,9 +4,11 @@
 #include "utils/metadata_extract.hpp"
 #include "engine/video_engine.hpp"
 #include "utils/sort.hpp"
+#include <algorithm>
 #include <vlcpp/vlc.hpp>
 #include <memory>
 #include <vector>
+#include <random>
 
 int main(int argc, char **argv)
 {
@@ -247,6 +249,28 @@ int main(int argc, char **argv)
         if (items.size() > 1) SortUtils::timsort(items.data(), items.size(), comp);
         while(mediaModel->row_count() > 0) mediaModel->erase(0);
         for (const auto& item : items) mediaModel->push_back(item);
+    });
+
+    ui->on_toggle_shuffle([&, queueModel] () {
+        std::vector<MediaItem> items;
+        for (int i = 0; i < queueModel->row_count(); ++i) items.push_back(queueModel->row_data(i).value());
+
+        std::random_device rd;
+        std::mt19937 g(rd());
+
+        if (items.size() > 1) {
+            std::shuffle(items.begin(), items.end(), g);
+            
+            // Clear both models
+            while(queueModel->row_count() > 0) queueModel->erase(0);
+            while(!MediaQueueOps::isEmpty(playbackQueue)) MediaQueueOps::dequeue(playbackQueue);
+
+            // Re-populate both models
+            for (const auto& item : items) {
+                queueModel->push_back(item);
+                MediaQueueOps::enqueue(playbackQueue, std::string(item.path.data()));
+            }
+        }
     });
 
     ui->on_queue_move_up([&](int index) {
