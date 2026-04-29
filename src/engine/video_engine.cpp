@@ -5,12 +5,12 @@
 namespace Playback {
 
 
-    void init(VlcEngine& engine) {
+    void init(VlcEngine& engine, int argc, const char* const* argv) {
         engine.video_width = 1280;
         engine.video_height = 720;
 
         // 1. Initialize VLC Engine
-        engine.instance = VLC::Instance(0, nullptr);
+        engine.instance = VLC::Instance(argc, argv);
         engine.player = VLC::MediaPlayer(engine.instance);
 
         // 2. Set up Memory Rendering

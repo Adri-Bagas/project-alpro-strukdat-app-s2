@@ -31,7 +31,7 @@ struct VlcEngine {
 // --- LOGIC NAMESPACE ---
 
 namespace Playback {
-    void init(VlcEngine& engine);
+    void init(VlcEngine& engine, int argc = 0, const char* const* argv = nullptr);
     void destroy(VlcEngine& engine);
     void loadFile(VlcEngine& engine, const std::string& path, unsigned width, unsigned height);
     void play(VlcEngine& engine);

@@ -18,8 +18,11 @@ int main(int argc, char **argv)
         "--file-caching=1500",
         "--network-caching=1500"
     };
+
+    int vlcargcount = sizeof(vlc_args) / sizeof(vlc_args[0]);
+
     auto vlcEngine = std::make_shared<VlcEngine>();
-    Playback::init(*vlcEngine);
+    Playback::init(*vlcEngine, vlcargcount, vlc_args);
 
     // 2. Initialize Models and Data Structures
     auto mediaModel = std::make_shared<slint::VectorModel<MediaItem>>();
@@ -88,7 +91,7 @@ int main(int argc, char **argv)
     };
 
     vlcEngine->on_length_changed = [currentLength](float length) {
-        printf("[VLC] Length Changed: %f seconds\n", length);
+        // printf("[VLC] Length Changed: %f seconds\n", length);
         *currentLength = length;
     };
 
@@ -114,7 +117,7 @@ int main(int argc, char **argv)
     MediaLinkedList mediaList = MediaScannerOps::scanToLinkedList(mediaScanner);
 
     MediaNode* current = mediaList.head;
-    printf("Found %zu media files.\n", mediaList.count);
+    // printf("Found %zu media files.\n", mediaList.count);
     while (current != nullptr) {
         parse_media_vlcpp(vlcEngine->instance, current->path, mediaModel);
         current = current->next;
@@ -200,7 +203,7 @@ int main(int argc, char **argv)
     ui->on_toggle_cycle([&, ui]() {
         cycleMode = !cycleMode;
         ui->set_cycle_mode(cycleMode);
-        printf("[APP] Cycle Mode: %s\n", cycleMode ? "ON" : "OFF");
+        // printf("[APP] Cycle Mode: %s\n", cycleMode ? "ON" : "OFF");
     });
 
     ui->on_sort_library([&, mediaModel](slint::SharedString col) mutable {
