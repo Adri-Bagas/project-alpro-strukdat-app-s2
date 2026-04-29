@@ -139,7 +139,7 @@ int main(int argc, char **argv)
             
             MediaNode* curr = mediaList.head;
             while (curr != nullptr) {
-                parse_media_vlcpp(vlcInstance, curr->path, mediaModel);
+                parse_media_vlcpp(vlcEngine->instance, curr->path, mediaModel);
                 curr = curr->next;
             }
         }
