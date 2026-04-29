@@ -19,8 +19,27 @@ if (NOT Slint_FOUND)
 endif (NOT Slint_FOUND)
 
 # --- 2. VLC & LIBVLCPP SETUP (Added) ---
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(VLC REQUIRED IMPORTED_TARGET libvlc)
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(VLC QUIET IMPORTED_TARGET libvlc)
+endif()
+
+if(NOT VLC_FOUND)
+    find_path(VLC_INCLUDE_DIR NAMES vlc/vlc.h HINTS "C:/libvlc/include")
+    find_library(VLC_LIBRARY NAMES vlc libvlc HINTS "C:/libvlc")
+    
+    if(VLC_INCLUDE_DIR AND VLC_LIBRARY)
+        add_library(PkgConfig::VLC UNKNOWN IMPORTED)
+        set_target_properties(PkgConfig::VLC PROPERTIES
+            IMPORTED_LOCATION "${VLC_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${VLC_INCLUDE_DIR}"
+        )
+        set(VLC_FOUND TRUE)
+        message(STATUS "Found libvlc manually at ${VLC_LIBRARY}")
+    else()
+        message(FATAL_ERROR "Could not find libvlc. Please ensure it is in C:/libvlc")
+    endif()
+endif()
 
 include(FetchContent) # Safe to call even if Slint already called it
 FetchContent_Declare(
@@ -30,12 +49,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(libvlcpp)
 
+# --- 2.5 NFD SETUP ---
+FetchContent_Declare(
+    nfd
+    GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+    GIT_TAG        master
+)
+FetchContent_MakeAvailable(nfd)
+
 # --- 3. BUILD THE APP ---
 add_executable(my_application
   src/main.cpp
   src/utils/media_scan.cpp
   src/engine/video_engine.cpp
   src/utils/metadata_extract.cpp
+  src/utils/file_dialog.cpp
 )
 slint_target_sources(my_application ui/app-window.slint)
 
@@ -45,7 +73,7 @@ target_include_directories(my_application PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${
 
 # --- 5. LINK ALL LIBRARIES (Updated) ---
 # Notice we added PkgConfig::VLC and libvlcpp here!
-target_link_libraries(my_application PRIVATE Slint::Slint PkgConfig::VLC)
+target_link_libraries(my_application PRIVATE Slint::Slint PkgConfig::VLC nfd)
 
 # On Windows, copy the Slint DLL next to the application binary so that it's found.
 if (WIN32)

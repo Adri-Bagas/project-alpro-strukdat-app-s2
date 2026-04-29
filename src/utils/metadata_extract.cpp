@@ -99,9 +99,20 @@ void parse_media_vlcpp(VLC::Instance& instance, const std::string& filepath, std
             slint::invoke_from_event_loop([title, artist, album, filepath, dur_str, size_str, format, track_num, art, v_width, v_height, ui_model]() {
                 std::string cleaned_art = art;
                 if (!art.empty()) {
-                    if (art.compare(0, 7, "file://") == 0) {
-                        cleaned_art = art.substr(7);
-                    }
+                    // VLC typically returns file:///path on Linux
+                    // We remove the file:// prefix but keep the leading / for absolute paths
+                    #ifndef WIN32
+                        if (art.compare(0, 7, "file://") == 0) {
+                            cleaned_art = art.substr(7);
+                        }
+                    #endif
+
+                    #ifdef WIN32
+                        if (art.compare(0, 8, "file:///") == 0) {
+                            cleaned_art = art.substr(8);
+                        }
+                    #endif
+
                     cleaned_art = urlDecode(cleaned_art);
                 }
 
