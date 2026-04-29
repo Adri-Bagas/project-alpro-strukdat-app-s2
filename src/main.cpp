@@ -16,21 +16,27 @@ int main(int argc, char **argv)
     // 1. Initialize Engines
     const char* const vlc_args[] = {
         "--no-xlib", 
-        "--quiet"
+        "--quiet",
+        "--file-caching=1500",
+        "--network-caching=1500"
     };
-    VLC::Instance vlcInstance(sizeof(vlc_args) / sizeof(vlc_args[0]), vlc_args);
+
+    int vlcargcount = sizeof(vlc_args) / sizeof(vlc_args[0]);
+
     auto vlcEngine = std::make_shared<VlcEngine>();
-    Playback::init(*vlcEngine);
+    Playback::init(*vlcEngine, vlcargcount, vlc_args);
 
     // 2. Initialize Models and Data Structures
     auto mediaModel = std::make_shared<slint::VectorModel<MediaItem>>();
     auto queueModel = std::make_shared<slint::VectorModel<MediaItem>>();
     
-    // Sort State
+    // State
     struct SortState {
         std::string column = "";
         bool ascending = true;
     } sortState;
+
+    bool cycleMode = false;
 
     MediaQueue playbackQueue;
     MediaQueueOps::init(playbackQueue);
@@ -57,17 +63,18 @@ int main(int argc, char **argv)
             queueModel->set_row_data(i, row);
         }
 
-        Playback::loadFile(*vlcEngine, path);
+        // Pass native dimensions to eliminate stutter
+        Playback::loadFile(*vlcEngine, path, item.video_width, item.video_height);
         Playback::play(*vlcEngine);
         ui->set_current_track(item);
-        ui->set_track_progress(0.0f); // Reset progress on new track
+        ui->set_track_progress(0.0f);
 
         // Switch view based on format
         std::string format = std::string(item.format.data());
         if (format == ".mp4" || format == ".mkv" || format == ".avi" || format == ".mov") {
-            ui->set_current_view(2); // Video View
+            ui->set_current_view(2); 
         } else {
-            ui->set_current_view(1); // Now Playing View
+            ui->set_current_view(1); 
         }
     };
 
@@ -86,7 +93,7 @@ int main(int argc, char **argv)
     };
 
     vlcEngine->on_length_changed = [currentLength](float length) {
-        printf("VLC Length Changed: %f seconds\n", length);
+        // printf("[VLC] Length Changed: %f seconds\n", length);
         *currentLength = length;
     };
 
@@ -94,7 +101,6 @@ int main(int argc, char **argv)
         if (*currentLength <= 0.0f) {
             *currentLength = Playback::getLength(*vlcEngine);
         }
-        printf("Seek requested to %f%%. Current length: %f\n", progress * 100.0f, *currentLength);
         if (*currentLength > 0.0f) {
             Playback::setTime(*vlcEngine, progress * (*currentLength));
         }
@@ -113,9 +119,9 @@ int main(int argc, char **argv)
     MediaLinkedList mediaList = MediaScannerOps::scanToLinkedList(mediaScanner);
 
     MediaNode* current = mediaList.head;
-    printf("Found %zu media files. Starting metadata extraction...\n", mediaList.count);
+    // printf("Found %zu media files.\n", mediaList.count);
     while (current != nullptr) {
-        parse_media_vlcpp(vlcInstance, current->path, mediaModel);
+        parse_media_vlcpp(vlcEngine->instance, current->path, mediaModel);
         current = current->next;
     }
 
@@ -144,11 +150,9 @@ int main(int argc, char **argv)
             auto item = mediaModel->row_data(index).value();
             std::string path = std::string(item.path.data());
             
-            // Clear existing queue logic
             while (!MediaQueueOps::isEmpty(playbackQueue)) MediaQueueOps::dequeue(playbackQueue);
             while (queueModel->row_count() > 0) queueModel->erase(0);
 
-            // Add the new song as the ONLY item in the queue
             MediaStackOps::push(playbackHistory, path);
             MediaQueueOps::enqueue(playbackQueue, path);
             queueModel->push_back(item);
@@ -161,37 +165,45 @@ int main(int argc, char **argv)
         if (index >= 0 && index < mediaModel->row_count()) {
             auto item = mediaModel->row_data(index).value();
             std::string path = std::string(item.path.data());
-            
             MediaQueueOps::enqueue(playbackQueue, path);
             queueModel->push_back(item);
-            
-            printf("Added to queue (manual): %s\n", path.c_str());
         }
     });
 
-    ui->on_player_next([&]() {
-        if (!MediaQueueOps::isEmpty(playbackQueue)) {
-            std::string path = MediaQueueOps::dequeue(playbackQueue);
+    auto handleNext = [&]() {
+        if (MediaQueueOps::isEmpty(playbackQueue)) return;
+
+        if (cycleMode) {
+            MediaQueueOps::rotateForward(playbackQueue);
+            auto firstItem = queueModel->row_data(0).value();
+            queueModel->erase(0);
+            queueModel->push_back(firstItem);
             
-            for (int i = 0; i < queueModel->row_count(); ++i) {
-                auto item = queueModel->row_data(i).value();
-                if (std::string(item.path.data()) == path) {
-                    MediaStackOps::push(playbackHistory, path);
-                    playPath(path, item);
-                    queueModel->erase(i);
-                    break;
-                }
+            std::string path = MediaQueueOps::peek(playbackQueue);
+            playPath(path, queueModel->row_data(0).value());
+        } else {
+            std::string path = MediaQueueOps::dequeue(playbackQueue);
+            MediaStackOps::push(playbackHistory, path);
+            queueModel->erase(0);
+            
+            if (!MediaQueueOps::isEmpty(playbackQueue)) {
+                std::string nextPath = MediaQueueOps::peek(playbackQueue);
+                playPath(nextPath, queueModel->row_data(0).value());
             }
         }
-    });
+    };
+
+    ui->on_player_next([&]() { handleNext(); });
+
+    vlcEngine->on_end_reached = [&]() {
+        slint::invoke_from_event_loop([&]() { handleNext(); });
+    };
 
     ui->on_player_prev([&]() {
         if (!MediaStackOps::isEmpty(playbackHistory)) {
             std::string currentPath = MediaStackOps::pop(playbackHistory);
-            
             if (!MediaStackOps::isEmpty(playbackHistory)) {
                 std::string prevPath = MediaStackOps::pop(playbackHistory);
-                
                 for (int i = 0; i < mediaModel->row_count(); ++i) {
                     auto item = mediaModel->row_data(i).value();
                     if (std::string(item.path.data()) == prevPath) {
@@ -209,20 +221,19 @@ int main(int argc, char **argv)
         while (queueModel->row_count() > 0) queueModel->erase(0);
     });
 
+    ui->on_toggle_cycle([&, ui]() {
+        cycleMode = !cycleMode;
+        ui->set_cycle_mode(cycleMode);
+        // printf("[APP] Cycle Mode: %s\n", cycleMode ? "ON" : "OFF");
+    });
+
     ui->on_sort_library([&, mediaModel](slint::SharedString col) mutable {
         std::string criteria = std::string(col.data());
-        
-        if (sortState.column == criteria) {
-            sortState.ascending = !sortState.ascending;
-        } else {
-            sortState.column = criteria;
-            sortState.ascending = true;
-        }
+        if (sortState.column == criteria) sortState.ascending = !sortState.ascending;
+        else { sortState.column = criteria; sortState.ascending = true; }
 
         std::vector<MediaItem> items;
-        for (int i = 0; i < mediaModel->row_count(); ++i) {
-            items.push_back(mediaModel->row_data(i).value());
-        }
+        for (int i = 0; i < mediaModel->row_count(); ++i) items.push_back(mediaModel->row_data(i).value());
 
         auto comp = [&](const MediaItem& a, const MediaItem& b) {
             bool result = false;
@@ -233,14 +244,9 @@ int main(int argc, char **argv)
             return sortState.ascending ? result : !result;
         };
 
-        if (items.size() > 1) {
-            SortUtils::timsort(items.data(), items.size(), comp);
-        }
-
+        if (items.size() > 1) SortUtils::timsort(items.data(), items.size(), comp);
         while(mediaModel->row_count() > 0) mediaModel->erase(0);
-        for (const auto& item : items) {
-            mediaModel->push_back(item);
-        }
+        for (const auto& item : items) mediaModel->push_back(item);
     });
 
     ui->on_queue_move_up([&](int index) {
@@ -277,7 +283,6 @@ int main(int argc, char **argv)
                 MediaStackOps::push(playbackHistory, path);
                 queueModel->erase(0);
             }
-
             std::string path = MediaQueueOps::peek(playbackQueue); 
             auto item = queueModel->row_data(0).value();
             playPath(path, item);
@@ -310,6 +315,7 @@ int main(int argc, char **argv)
     ui->on_toggle_fullscreen([&, ui]() {
         isFullscreen = !isFullscreen;
         ui->window().set_fullscreen(isFullscreen);
+        // never change this btw cause i know is wack but it works! 
         ui->set_is_fullscreen(isFullscreen);
     });
 

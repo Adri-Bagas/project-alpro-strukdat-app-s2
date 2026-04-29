@@ -34,7 +34,7 @@ namespace MediaList {
     }
 
     void pushBack(MediaLinkedList& list, const std::string& path) {
-        MediaNode* node = new MediaNode{path, nullptr};
+        MediaNode* node = new MediaNode{path, nullptr, list.tail};
         if (!list.head) {
             list.head = list.tail = node;
         } else {
@@ -55,7 +55,7 @@ namespace MediaList {
     }
 }
 
-// --- MediaQueueOps Implementation ---
+// --- MediaQueueOps Implementation (Circular Doubly Linked List) ---
 namespace MediaQueueOps {
     void init(MediaQueue& q) {
         q.front = nullptr;
@@ -64,17 +64,32 @@ namespace MediaQueueOps {
     }
 
     void destroy(MediaQueue& q) {
-        while (!isEmpty(q)) {
-            dequeue(q);
+        if (isEmpty(q)) return;
+        
+        // Break the circle to allow easy cleanup
+        q.rear->next = nullptr;
+        
+        MediaNode* current = q.front;
+        while (current) {
+            MediaNode* temp = current;
+            current = current->next;
+            delete temp;
         }
+        q.front = q.rear = nullptr;
+        q.count = 0;
     }
 
     void enqueue(MediaQueue& q, const std::string& path) {
-        MediaNode* newNode = new MediaNode{path, nullptr};
+        MediaNode* newNode = new MediaNode{path, nullptr, nullptr};
         if (isEmpty(q)) {
             q.front = q.rear = newNode;
+            newNode->next = newNode;
+            newNode->prev = newNode;
         } else {
+            newNode->next = q.front;
+            newNode->prev = q.rear;
             q.rear->next = newNode;
+            q.front->prev = newNode;
             q.rear = newNode;
         }
         q.count++;
@@ -82,11 +97,19 @@ namespace MediaQueueOps {
 
     std::string dequeue(MediaQueue& q) {
         if (isEmpty(q)) return "";
-        MediaNode* temp = q.front;
-        std::string path = temp->path;
-        q.front = q.front->next;
-        if (!q.front) q.rear = nullptr;
-        delete temp;
+        
+        MediaNode* toDelete = q.front;
+        std::string path = toDelete->path;
+        
+        if (q.count == 1) {
+            q.front = q.rear = nullptr;
+        } else {
+            q.front = q.front->next;
+            q.front->prev = q.rear;
+            q.rear->next = q.front;
+        }
+        
+        delete toDelete;
         q.count--;
         return path;
     }
@@ -116,25 +139,31 @@ namespace MediaQueueOps {
     std::string removeAt(MediaQueue& q, size_t index) {
         if (index >= q.count || isEmpty(q)) return "";
         
-        MediaNode* toDelete = nullptr;
-        std::string path;
+        if (index == 0) return dequeue(q);
         
-        if (index == 0) {
-            toDelete = q.front;
-            q.front = q.front->next;
-            if (!q.front) q.rear = nullptr;
-        } else {
-            MediaNode* prev = q.front;
-            for (size_t i = 0; i < index - 1; ++i) prev = prev->next;
-            toDelete = prev->next;
-            prev->next = toDelete->next;
-            if (toDelete == q.rear) q.rear = prev;
-        }
+        MediaNode* toDelete = q.front;
+        for (size_t i = 0; i < index; ++i) toDelete = toDelete->next;
         
-        path = toDelete->path;
+        std::string path = toDelete->path;
+        
+        MediaNode* prevNode = toDelete->prev;
+        MediaNode* nextNode = toDelete->next;
+        
+        prevNode->next = nextNode;
+        nextNode->prev = prevNode;
+        
+        if (toDelete == q.rear) q.rear = prevNode;
+        
         delete toDelete;
         q.count--;
         return path;
+    }
+
+    void rotateForward(MediaQueue& q) {
+        if (q.count > 1) {
+            q.rear = q.front;
+            q.front = q.front->next;
+        }
     }
 }
 
@@ -152,7 +181,7 @@ namespace MediaStackOps {
     }
 
     void push(MediaStack& s, const std::string& path) {
-        MediaNode* newNode = new MediaNode{path, s.top};
+        MediaNode* newNode = new MediaNode{path, s.top, nullptr};
         s.top = newNode;
         s.count++;
     }
