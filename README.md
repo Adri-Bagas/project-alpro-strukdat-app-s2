@@ -47,15 +47,20 @@ Aplikasi ini mengimplementasikan konsep Algoritma Pemrograman dan Struktur Data 
   }
   ```
 
-- **Callback Function**: Digunakan dalam interaksi UI melalui _event listener_ dari Slint.
-  _[Lihat di `src/main.cpp`](src/main.cpp)_
+- **Callback Function**: Digunakan dalam algoritma pencarian (search) di mana kriteria pencarian dilempar sebagai fungsi (*match_fn*).
+  _[Lihat di `src/utils/search.hpp`](src/utils/search.hpp)_
 
   ```cpp
-  ui->on_play_media([&](int index) {
-      if (index >= 0 && index < mediaModel->row_count()) {
-          // Logika ketika media diputar
+  template <typename T, typename MatchFn>
+  std::vector<T> linear_search_if(const std::vector<T>& data, MatchFn match_fn) {
+      std::vector<T> result;
+      for (const auto& item : data) {
+          if (match_fn(item)) { // Memanggil fungsi callback
+              result.push_back(item);
+          }
       }
-  });
+      return result;
+  }
   ```
 
 - **Default Argument**: Digunakan pada fungsi utilitas untuk memberikan nilai _default_ apabila argumen tidak dikirim.
